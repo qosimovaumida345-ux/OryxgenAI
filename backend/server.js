@@ -607,6 +607,27 @@ async function handleMcpJsonRpc(body) {
         },
       };
 
+    case "ping":
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {},
+      };
+
+    case "resources/templates/list":
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: { resourceTemplates: [] },
+      };
+
+    case "logging/setLevel":
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {},
+      };
+
     default:
       return {
         jsonrpc: "2.0",
@@ -616,24 +637,131 @@ async function handleMcpJsonRpc(body) {
   }
 }
 
-// MCP over HTTP POST (Standard endpoint)
-app.post(["/api/mcp", "/mcp"], async (req, res) => {
-  const result = await handleMcpJsonRpc(req.body);
-  if (!result) return res.status(204).end();
-  res.json(result);
+// MCP OPTIONS Preflight Handler
+app.options(["/api/mcp", "/mcp", "/api/mcp/sse", "/sse"], (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS, HEAD");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id, mcp-session-id");
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  res.status(204).end();
 });
 
-// MCP Server-Sent Events (SSE) endpoint for Claude Desktop / Remote SSE clients
+// Active MCP sessions for Streamable HTTP transport
+const mcpSessions = new Map();
+
+function setMcpCorsHeaders(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id, mcp-session-id");
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+}
+
+// ── Streamable HTTP Transport (Claude.ai Connectors) ──
+// Single endpoint handles POST (JSON-RPC), GET (SSE notifications), DELETE (close session)
+app.post(["/api/mcp", "/mcp"], async (req, res) => {
+  setMcpCorsHeaders(res);
+
+  // Generate or reuse session ID
+  let sessionId = req.headers["mcp-session-id"] || req.query.sessionId;
+  if (!sessionId) {
+    sessionId = `mcp-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+  }
+  res.setHeader("Mcp-Session-Id", sessionId);
+  mcpSessions.set(sessionId, Date.now());
+
+  const body = req.body;
+  const acceptHeader = (req.headers.accept || "").toLowerCase();
+  const wantsSSE = acceptHeader.includes("text/event-stream");
+
+  // Handle batch JSON-RPC (array of requests)
+  if (Array.isArray(body)) {
+    const results = [];
+    for (const item of body) {
+      const result = await handleMcpJsonRpc(item);
+      if (result) results.push(result);
+    }
+    if (wantsSSE) {
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.flushHeaders?.();
+      for (const r of results) {
+        res.write(`event: message\ndata: ${JSON.stringify(r)}\n\n`);
+      }
+      res.end();
+    } else {
+      res.json(results);
+    }
+    return;
+  }
+
+  // Single JSON-RPC request
+  const result = await handleMcpJsonRpc(body);
+
+  // Notifications have no response
+  if (!result) {
+    return res.status(202).end();
+  }
+
+  if (wantsSSE) {
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.flushHeaders?.();
+    res.write(`event: message\ndata: ${JSON.stringify(result)}\n\n`);
+    res.end();
+  } else {
+    res.json(result);
+  }
+});
+
+// GET on Streamable HTTP endpoint: SSE stream for server-initiated notifications
+app.get(["/api/mcp", "/mcp"], (req, res) => {
+  setMcpCorsHeaders(res);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+
+  let sessionId = req.headers["mcp-session-id"] || req.query.sessionId;
+  if (!sessionId) {
+    sessionId = `mcp-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+  }
+  res.setHeader("Mcp-Session-Id", sessionId);
+  mcpSessions.set(sessionId, Date.now());
+  res.flushHeaders?.();
+
+  // Keep-alive heartbeat
+  const interval = setInterval(() => {
+    res.write(": keepalive\n\n");
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(interval);
+    mcpSessions.delete(sessionId);
+  });
+});
+
+// DELETE: Close MCP session
+app.delete(["/api/mcp", "/mcp"], (req, res) => {
+  setMcpCorsHeaders(res);
+  const sessionId = req.headers["mcp-session-id"] || req.query.sessionId;
+  if (sessionId) mcpSessions.delete(sessionId);
+  res.status(204).end();
+});
+
+// ── Legacy SSE Transport (Claude Desktop / Cursor) ──
+// Two-endpoint model: GET /sse opens stream, POST to returned endpoint sends messages
 app.get(["/api/mcp/sse", "/sse"], (req, res) => {
+  setMcpCorsHeaders(res);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
 
   const sessionId = Math.random().toString(36).substring(2, 15);
-  res.write(`event: endpoint\ndata: /api/mcp?sessionId=${sessionId}\n\n`);
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.get("host") || "oryxgen-api.onrender.com";
+  const endpointUrl = `${proto}://${host}/api/mcp?sessionId=${sessionId}`;
 
-  // Keep-alive heartbeat
+  res.write(`event: endpoint\ndata: ${endpointUrl}\n\n`);
+
   const interval = setInterval(() => {
     res.write(": keepalive\n\n");
   }, 15000);

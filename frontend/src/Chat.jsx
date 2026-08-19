@@ -360,11 +360,15 @@ export default function Chat() {
     return true;
   });
 
+  const backendApiUrl = (import.meta.env.VITE_API_URL || "https://oryxgen-api.onrender.com").replace(/\/$/, "");
+  const mcpSseUrl = `${backendApiUrl}/api/mcp/sse`;
+  const mcpPostUrl = `${backendApiUrl}/api/mcp`;
+
   const mcpConfigJson = JSON.stringify(
     {
       mcpServers: {
         "oryxgen-ai": {
-          url: "https://avg-ai-creator.site/api/mcp/sse",
+          url: mcpSseUrl,
           type: "sse",
         },
       },
@@ -890,13 +894,13 @@ export default function Chat() {
               </p>
 
               <div className="mcp-endpoint-box">
-                <span className="mcp-label">Server SSE URL (Claude uchun):</span>
-                <code>https://avg-ai-creator.site/api/mcp/sse</code>
+                <span className="mcp-label">Claude.ai Connector URL (Streamable HTTP):</span>
+                <code>{mcpPostUrl}</code>
               </div>
 
               <div className="mcp-endpoint-box">
-                <span className="mcp-label">JSON-RPC HTTP POST:</span>
-                <code>https://avg-ai-creator.site/api/mcp</code>
+                <span className="mcp-label">Claude Desktop / Cursor SSE URL:</span>
+                <code>{mcpSseUrl}</code>
               </div>
 
               <div className="claude-config-wrapper">
