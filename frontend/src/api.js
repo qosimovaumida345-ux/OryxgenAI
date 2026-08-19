@@ -163,8 +163,31 @@ export async function verifyAuthCode(target, code, name) {
   return data;
 }
 
+export async function fetchGoogleAuthUrl(redirectUri) {
+  const targetRedirect = redirectUri || `${window.location.origin}/app`;
+  const res = await fetch(`${API}/api/auth/google/url?redirect_uri=${encodeURIComponent(targetRedirect)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Google auth URL yaratib bo'lmadi");
+  return data.url;
+}
+
+export async function exchangeGoogleCode(code, redirectUri) {
+  const targetRedirect = redirectUri || `${window.location.origin}/app`;
+  const res = await fetch(`${API}/api/auth/google/callback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, redirect_uri: targetRedirect }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Google orqali kirishda xatolik");
+  if (data.token) {
+    setAuthSession(data.token, data.user);
+  }
+  return data;
+}
+
 export async function googleAuth(email, name, avatar) {
-  const res = await fetch(`${API}/api/auth/google`, {
+  const res = await fetch(`${API}/api/auth/google/callback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, name, avatar }),

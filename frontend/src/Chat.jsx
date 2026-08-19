@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   checkBackendHealth,
   clearAuthSession,
+  exchangeGoogleCode,
   fetchCatalog,
   getStoredUser,
   saveUserChat,
@@ -79,10 +80,26 @@ export default function Chat() {
   const inputRef = useRef(null);
   const thinkingTimerRef = useRef(null);
 
-  // Initialize catalog and backend health check
+  // Initialize catalog, backend health check, and handle Google OAuth callback
   useEffect(() => {
     let mounted = true;
     async function init() {
+      // Check for Google OAuth callback code in URL
+      const searchParams = new URLSearchParams(window.location.search);
+      const googleCode = searchParams.get("code");
+      if (googleCode) {
+        try {
+          const authRes = await exchangeGoogleCode(googleCode, `${window.location.origin}/app`);
+          if (authRes.user && mounted) {
+            setCurrentUser(authRes.user);
+          }
+        } catch (authErr) {
+          console.warn("Google OAuth callback error:", authErr.message);
+        } finally {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+
       await checkBackendHealth();
       if (mounted) {
         setIsBackendLoading(false);

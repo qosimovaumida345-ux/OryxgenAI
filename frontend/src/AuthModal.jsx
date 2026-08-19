@@ -1,6 +1,6 @@
 import { useState } from "react";
 import emailjs from "@emailjs/browser";
-import { googleAuth, sendAuthCode, verifyAuthCode } from "./api";
+import { fetchGoogleAuthUrl, googleAuth, sendAuthCode, verifyAuthCode } from "./api";
 import "./AuthModal.css";
 
 // Optional default EmailJS environment keys (can be configured in .env or dynamically)
@@ -114,6 +114,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     setError("");
     setLoading(true);
     try {
+      // 1. Try to initiate official Google OAuth 2.0 flow
+      const redirectUri = `${window.location.origin}/app`;
+      const googleOAuthUrl = await fetchGoogleAuthUrl(redirectUri).catch(() => null);
+
+      if (googleOAuthUrl) {
+        // Redirect to Google Consent Screen
+        window.location.href = googleOAuthUrl;
+        return;
+      }
+
+      // 2. Fallback direct authentication if backend has no Google Secret yet
       const googleEmail = name ? `${name.toLowerCase().replace(/\s+/g, ".")}@gmail.com` : "user@gmail.com";
       const res = await googleAuth(
         googleEmail,
