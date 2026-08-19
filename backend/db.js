@@ -159,7 +159,15 @@ export async function getUserChats(userId) {
         "SELECT * FROM chats WHERE user_id = $1 ORDER BY updated_at DESC",
         [userId]
       );
-      return res.rows;
+      const chats = res.rows;
+      for (const c of chats) {
+        const msgRes = await pool.query(
+          "SELECT id, role, content, thinking, created_at FROM messages WHERE chat_id = $1 ORDER BY id ASC",
+          [c.id]
+        );
+        c.messages = msgRes.rows || [];
+      }
+      return chats;
     } catch {
       // fallback
     }
@@ -176,9 +184,18 @@ export async function saveUserChat(chat) {
          ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, model = EXCLUDED.model, updated_at = NOW()`,
         [chat.id, chat.user_id, chat.title, chat.model]
       );
+      if (Array.isArray(chat.messages) && chat.messages.length > 0) {
+        await pool.query("DELETE FROM messages WHERE chat_id = $1", [chat.id]);
+        for (const msg of chat.messages) {
+          await pool.query(
+            "INSERT INTO messages (chat_id, role, content, thinking) VALUES ($1, $2, $3, $4)",
+            [chat.id, msg.role, msg.content, msg.thinking || null]
+          );
+        }
+      }
       return;
-    } catch {
-      // fallback
+    } catch (err) {
+      console.warn("DB save chat error:", err.message);
     }
   }
   const idx = inMemory.chats.findIndex((c) => c.id === chat.id);
@@ -187,4 +204,17 @@ export async function saveUserChat(chat) {
   } else {
     inMemory.chats.push({ ...chat, created_at: new Date(), updated_at: new Date() });
   }
+}
+
+export async function deleteUserChat(chatId, userId) {
+  if (pool && userId) {
+    try {
+      await pool.query("DELETE FROM chats WHERE id = $1 AND user_id = $2", [chatId, userId]);
+      return;
+    } catch (err) {
+      console.warn("DB delete chat error:", err.message);
+    }
+  }
+  const idx = inMemory.chats.findIndex((c) => c.id === chatId && (!userId || c.user_id === userId));
+  if (idx >= 0) inMemory.chats.splice(idx, 1);
 }

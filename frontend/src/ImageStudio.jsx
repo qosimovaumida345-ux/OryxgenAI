@@ -124,6 +124,31 @@ export default function ImageStudio() {
     setTimeout(() => setCopiedPrompt(false), 2000);
   };
 
+  const handleDeleteImage = (e, imageId) => {
+    if (e) e.stopPropagation();
+    const updated = gallery.filter((img) => img.id !== imageId);
+    setGallery(updated);
+    try {
+      localStorage.setItem("oryxgen_image_gallery", JSON.stringify(updated));
+    } catch {}
+
+    if (currentImage?.id === imageId) {
+      setCurrentImage(updated[0] || null);
+    }
+    if (lightboxImage?.id === imageId) {
+      setLightboxImage(null);
+    }
+  };
+
+  const handleClearAllGallery = () => {
+    setGallery([]);
+    setCurrentImage(null);
+    setLightboxImage(null);
+    try {
+      localStorage.removeItem("oryxgen_image_gallery");
+    } catch {}
+  };
+
   return (
     <div className="image-studio-layout">
       {/* Header */}
@@ -283,6 +308,14 @@ export default function ImageStudio() {
                   >
                     {copiedPrompt ? "Prompt nusxalandi" : "Promptni nusxalash"}
                   </button>
+                  <button
+                    type="button"
+                    className="action-btn danger"
+                    onClick={(e) => handleDeleteImage(e, currentImage.id)}
+                    title="Tasvirni o'chirish"
+                  >
+                    O'chirish
+                  </button>
                 </div>
               </div>
             </div>
@@ -303,7 +336,17 @@ export default function ImageStudio() {
           {/* History Gallery */}
           {gallery.length > 0 && (
             <section className="studio-gallery-section">
-              <h4>Yaratilgan Tasvirlar ({gallery.length})</h4>
+              <div className="gallery-header-row">
+                <h4>Yaratilgan Tasvirlar ({gallery.length})</h4>
+                <button
+                  type="button"
+                  className="clear-gallery-btn"
+                  onClick={handleClearAllGallery}
+                  title="Barcha rasmlarni o'chirish"
+                >
+                  Barchasini tozalash
+                </button>
+              </div>
               <div className="gallery-grid">
                 {gallery.map((item) => (
                   <div
@@ -315,6 +358,15 @@ export default function ImageStudio() {
                     }}
                   >
                     <img src={item.url} alt={item.prompt} loading="lazy" />
+                    <button
+                      type="button"
+                      className="gallery-item-delete"
+                      onClick={(e) => handleDeleteImage(e, item.id)}
+                      title="O'chirish"
+                      aria-label="O'chirish"
+                    >
+                      ✕
+                    </button>
                     <div className="gallery-item-overlay">
                       <span>{item.ratio}</span>
                     </div>
@@ -340,13 +392,22 @@ export default function ImageStudio() {
             <img src={lightboxImage.url} alt={lightboxImage.prompt} />
             <div className="lightbox-caption">
               <p>{lightboxImage.prompt}</p>
-              <button
-                type="button"
-                className="action-btn primary"
-                onClick={() => handleDownload(lightboxImage.url, `oryxgen-${lightboxImage.id}.jpg`)}
-              >
-                Yuklab olish
-              </button>
+              <div className="lightbox-actions-row">
+                <button
+                  type="button"
+                  className="action-btn primary"
+                  onClick={() => handleDownload(lightboxImage.url, `oryxgen-${lightboxImage.id}.jpg`)}
+                >
+                  Yuklab olish
+                </button>
+                <button
+                  type="button"
+                  className="action-btn danger"
+                  onClick={(e) => handleDeleteImage(e, lightboxImage.id)}
+                >
+                  O'chirish
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { findModel, PUBLIC_IMAGE_MODELS, PUBLIC_MODELS } from "./catalog.js";
 import { pollinationsModel, refreshFreeModels, resolveUpstream, getFreePool } from "./mapper.js";
-import { initDb, getUserChats, saveUserChat } from "./db.js";
+import { initDb, getUserChats, saveUserChat, deleteUserChat } from "./db.js";
 import { authMiddleware, setupAuthRoutes } from "./auth.js";
 
 dotenv.config();
@@ -314,6 +314,14 @@ app.post("/api/chats", authMiddleware, async (req, res) => {
     chat.user_id = req.user.id;
   }
   await saveUserChat(chat);
+  res.json({ ok: true });
+});
+
+app.delete("/api/chats/:id", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  if (!id) return clientError(res, 400, "Chat ID required");
+  const userId = req.user ? req.user.id : null;
+  await deleteUserChat(id, userId);
   res.json({ ok: true });
 });
 

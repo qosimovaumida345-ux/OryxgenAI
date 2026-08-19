@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import {
   checkBackendHealth,
   clearAuthSession,
+  deleteUserChat,
   exchangeGoogleCode,
   fetchCatalog,
+  fetchUserChats,
   getStoredUser,
   saveUserChat,
   streamChat,
@@ -15,6 +17,31 @@ import { CompanyLogo } from "./Logos";
 import "./Chat.css";
 
 const DEFAULT_MODEL = "claude-4.6-opus";
+const CHATS_STORAGE_KEY = "oryxgen_saved_chats";
+const ACTIVE_CHAT_KEY = "oryxgen_active_chat_id";
+
+function getStoredChats() {
+  try {
+    const raw = localStorage.getItem(CHATS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return [{ id: "chat-1", title: "Yangi suhbat", model: DEFAULT_MODEL, messages: [] }];
+}
+
+function getStoredActiveId(initialChats) {
+  try {
+    const savedId = localStorage.getItem(ACTIVE_CHAT_KEY);
+    if (savedId && initialChats.some((c) => c.id === savedId)) {
+      return savedId;
+    }
+  } catch {}
+  return initialChats[0]?.id || "chat-1";
+}
 
 const SKILL_PRESETS = [
   {
@@ -45,33 +72,31 @@ const SKILL_PRESETS = [
 
 export default function Chat() {
   const [models, setModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
-  const [messages, setMessages] = useState([]);
+  const [chats, setChats] = useState(getStoredChats);
+  const [activeChatId, setActiveChatId] = useState(() => getStoredActiveId(chats));
+  
+  const activeChat = chats.find((c) => c.id === activeChatId) || chats[0];
+  const [selectedModel, setSelectedModel] = useState(() => activeChat?.model || DEFAULT_MODEL);
+  const [messages, setMessages] = useState(() => activeChat?.messages || []);
+
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentThinking, setCurrentThinking] = useState("");
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
   const [thinkingTime, setThinkingTime] = useState(0);
 
-  // System Prompt & Skill Creator State
   const [systemPrompt, setSystemPrompt] = useState(SKILL_PRESETS[0].systemPrompt);
   const [activeSkillId, setActiveSkillId] = useState("default");
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
 
-  // MCP Info Modal
   const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
   const [mcpCopied, setMcpCopied] = useState(false);
 
-  // UI States
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [searchModel, setSearchModel] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(getStoredUser());
-  const [chats, setChats] = useState([
-    { id: "chat-1", title: "Yangi suhbat", model: DEFAULT_MODEL, messages: [] },
-  ]);
-  const [activeChatId, setActiveChatId] = useState("chat-1");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isBackendLoading, setIsBackendLoading] = useState(true);
   const [copiedCodeId, setCopiedCodeId] = useState(null);
@@ -80,11 +105,16 @@ export default function Chat() {
   const inputRef = useRef(null);
   const thinkingTimerRef = useRef(null);
 
-  // Initialize catalog, backend health check, and handle Google OAuth callback
+  const persistChats = (updatedChats) => {
+    setChats(updatedChats);
+    try {
+      localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updatedChats));
+    } catch {}
+  };
+
   useEffect(() => {
     let mounted = true;
     async function init() {
-      // Check for Google OAuth callback code in URL
       const searchParams = new URLSearchParams(window.location.search);
       const googleCode = searchParams.get("code");
       if (googleCode) {
@@ -109,22 +139,36 @@ export default function Chat() {
         if (mounted && cat.models?.length) {
           setModels(cat.models);
         }
-      } catch {
-        /* fallback handled */
+      } catch {}
+
+      if (currentUser) {
+        try {
+          const remoteChats = await fetchUserChats();
+          if (mounted && Array.isArray(remoteChats) && remoteChats.length > 0) {
+            setChats((localPrev) => {
+              const mergedMap = new Map();
+              localPrev.forEach((c) => mergedMap.set(c.id, c));
+              remoteChats.forEach((c) => mergedMap.set(c.id, { ...c, messages: c.messages || [] }));
+              const merged = Array.from(mergedMap.values());
+              try {
+                localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
+        } catch {}
       }
     }
     init();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [currentUser]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, currentThinking]);
 
-  // Handle thinking timer
   useEffect(() => {
     if (isStreaming && currentThinking) {
       thinkingTimerRef.current = setInterval(() => {
@@ -138,11 +182,60 @@ export default function Chat() {
 
   const activeModelMeta = models.find((m) => m.id === selectedModel) || {
     id: selectedModel,
-    displayName: selectedModel.toUpperCase(),
+    displayName: selectedModel.replace(/-/g, " ").toUpperCase(),
     company: "Anthropic",
     logoKey: "anthropic",
     capability: "reason",
     isPremium: true,
+  };
+
+  const handleSelectChat = (chatId) => {
+    const target = chats.find((c) => c.id === chatId);
+    if (!target) return;
+    setActiveChatId(chatId);
+    setMessages(target.messages || []);
+    if (target.model) setSelectedModel(target.model);
+    setCurrentThinking("");
+    try {
+      localStorage.setItem(ACTIVE_CHAT_KEY, chatId);
+    } catch {}
+    setSidebarOpen(false);
+  };
+
+  const handleNewChat = () => {
+    const newId = `chat-${Date.now()}`;
+    const newChatObj = { id: newId, title: "Yangi suhbat", model: selectedModel, messages: [] };
+    const updated = [newChatObj, ...chats];
+    persistChats(updated);
+    setActiveChatId(newId);
+    setMessages([]);
+    setCurrentThinking("");
+    try {
+      localStorage.setItem(ACTIVE_CHAT_KEY, newId);
+    } catch {}
+    setSidebarOpen(false);
+  };
+
+  const handleDeleteChat = (e, chatId) => {
+    e.stopPropagation();
+    const remaining = chats.filter((c) => c.id !== chatId);
+    const finalChats =
+      remaining.length > 0
+        ? remaining
+        : [{ id: `chat-${Date.now()}`, title: "Yangi suhbat", model: DEFAULT_MODEL, messages: [] }];
+    persistChats(finalChats);
+    deleteUserChat(chatId);
+
+    if (activeChatId === chatId) {
+      const nextChat = finalChats[0];
+      setActiveChatId(nextChat.id);
+      setMessages(nextChat.messages || []);
+      if (nextChat.model) setSelectedModel(nextChat.model);
+      setCurrentThinking("");
+      try {
+        localStorage.setItem(ACTIVE_CHAT_KEY, nextChat.id);
+      } catch {}
+    }
   };
 
   const handleSendMessage = async (customText = null) => {
@@ -159,6 +252,16 @@ export default function Chat() {
     ];
     setMessages(newMessages);
 
+    const interimChats = chats.map((c) => {
+      if (c.id === activeChatId) {
+        const firstUserMsg = newMessages.find((m) => m.role === "user");
+        const title = c.title === "Yangi suhbat" && firstUserMsg ? firstUserMsg.content.slice(0, 32) : c.title;
+        return { ...c, title, messages: newMessages, model: selectedModel };
+      }
+      return c;
+    });
+    persistChats(interimChats);
+
     setIsStreaming(true);
     setCurrentThinking("");
     setThinkingTime(0);
@@ -173,83 +276,57 @@ export default function Chat() {
           model: selectedModel,
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           systemPrompt: systemPrompt || undefined,
+          chatId: activeChatId,
         },
-        // onContent
         (chunk) => {
           assistantContent += chunk;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last && last.id === assistantMsgId) {
-              return [
-                ...prev.slice(0, -1),
-                { ...last, content: assistantContent, thinking: assistantThinking },
-              ];
+              return [...prev.slice(0, -1), { ...last, content: assistantContent, thinking: assistantThinking }];
             }
-            return [
-              ...prev,
-              {
-                id: assistantMsgId,
-                role: "assistant",
-                content: assistantContent,
-                thinking: assistantThinking,
-                model: selectedModel,
-              },
-            ];
+            return [...prev, { id: assistantMsgId, role: "assistant", content: assistantContent, thinking: assistantThinking, model: selectedModel }];
           });
         },
-        // onThinking
         (thinkChunk) => {
           assistantThinking += thinkChunk;
           setCurrentThinking(assistantThinking);
         },
-        // onDone
         () => {
           setIsStreaming(false);
-          // Save to chat state
-          const updatedChat = {
-            id: activeChatId,
-            title: newMessages[0]?.content.slice(0, 30) || "Suhbat",
-            model: selectedModel,
-            messages: [
-              ...newMessages,
-              {
-                id: assistantMsgId,
-                role: "assistant",
-                content: assistantContent,
-                thinking: assistantThinking,
-                model: selectedModel,
-              },
-            ],
-          };
-          saveUserChat(updatedChat);
+          const finalMessages = [
+            ...newMessages,
+            { id: assistantMsgId, role: "assistant", content: assistantContent, thinking: assistantThinking, model: selectedModel },
+          ];
+          setMessages(finalMessages);
+
+          setChats((prevChats) => {
+            const updated = prevChats.map((c) => {
+              if (c.id === activeChatId) {
+                const firstUserMsg = finalMessages.find((m) => m.role === "user");
+                const title = c.title === "Yangi suhbat" && firstUserMsg ? firstUserMsg.content.slice(0, 32) : c.title;
+                const updatedChat = { ...c, title, messages: finalMessages, model: selectedModel };
+                saveUserChat(updatedChat);
+                return updatedChat;
+              }
+              return c;
+            });
+            try { localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updated)); } catch {}
+            return updated;
+          });
         },
-        // onError
         (errMsg) => {
           setIsStreaming(false);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              role: "assistant",
-              content: `Xatolik: ${errMsg}`,
-              model: selectedModel,
-              isError: true,
-            },
-          ]);
+          const errMessages = [...newMessages, { id: `error-${Date.now()}`, role: "assistant", content: `Xatolik: ${errMsg}`, model: selectedModel, isError: true }];
+          setMessages(errMessages);
+          persistChats(chats.map((c) => (c.id === activeChatId ? { ...c, messages: errMessages } : c)));
         }
       );
     } catch (err) {
       setIsStreaming(false);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: `Ulanish xatosi: ${err.message}`,
-          model: selectedModel,
-          isError: true,
-        },
-      ]);
+      const errMessages = [...newMessages, { id: `error-${Date.now()}`, role: "assistant", content: `Ulanish xatosi: ${err.message}`, model: selectedModel, isError: true }];
+      setMessages(errMessages);
+      persistChats(chats.map((c) => (c.id === activeChatId ? { ...c, messages: errMessages } : c)));
     }
   };
 
@@ -258,16 +335,6 @@ export default function Chat() {
       e.preventDefault();
       handleSendMessage();
     }
-  };
-
-  const handleNewChat = () => {
-    const newId = `chat-${Date.now()}`;
-    const newChatObj = { id: newId, title: "Yangi suhbat", model: selectedModel, messages: [] };
-    setChats([newChatObj, ...chats]);
-    setActiveChatId(newId);
-    setMessages([]);
-    setCurrentThinking("");
-    setSidebarOpen(false);
   };
 
   const copyCode = (codeStr, id) => {
@@ -321,9 +388,11 @@ export default function Chat() {
       {/* Sidebar */}
       <aside className={`chat-sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-header">
-          <Link to="/" className="sidebar-logo">
+          <Link to="/" className="sidebar-brand">
             <img src="/Logo.png" alt="Oryxgen Logo" className="chat-brand-logo" />
-            <span>Oryxgen<small>.ai</small></span>
+            <span>
+              Oryxgen <span className="brand-suffix">AI</span>
+            </span>
           </Link>
           <button
             type="button"
@@ -346,22 +415,27 @@ export default function Chat() {
         <div className="sidebar-section-title">Suhbatlar tarixi</div>
         <div className="chat-list">
           {chats.map((c) => (
-            <button
+            <div
               key={c.id}
-              type="button"
               className={`chat-list-item ${c.id === activeChatId ? "active" : ""}`}
-              onClick={() => {
-                setActiveChatId(c.id);
-                setMessages(c.messages || []);
-                setSelectedModel(c.model || DEFAULT_MODEL);
-                setSidebarOpen(false);
-              }}
+              onClick={() => handleSelectChat(c.id)}
             >
-              <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="1.8">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span>{c.title || "Suhbat"}</span>
-            </button>
+              <div className="chat-item-main">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" strokeWidth="1.8">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>{c.title || "Suhbat"}</span>
+              </div>
+              <button
+                type="button"
+                className="chat-delete-btn"
+                onClick={(e) => handleDeleteChat(e, c.id)}
+                title="Suhbatni o'chirish"
+                aria-label="Suhbatni o'chirish"
+              >
+                ✕
+              </button>
+            </div>
           ))}
         </div>
 

@@ -105,9 +105,10 @@
 .chat-list-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  padding: 9px 12px;
+  padding: 8px 10px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -116,9 +117,7 @@
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  user-select: none;
 }
 
 .chat-list-item:hover {
@@ -130,6 +129,49 @@
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
+}
+
+.chat-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-item-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-delete-btn {
+  background: transparent;
+  border: none;
+  color: #666666;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.chat-list-item:hover .chat-delete-btn,
+.chat-list-item.active .chat-delete-btn {
+  opacity: 0.7;
+}
+
+.chat-delete-btn:hover {
+  opacity: 1 !important;
+  color: #ff5555 !important;
+  background: rgba(255, 85, 85, 0.15) !important;
 }
 
 .sidebar-tools {

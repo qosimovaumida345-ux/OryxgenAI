@@ -222,3 +222,14 @@ export async function saveUserChat(chat) {
     // ignore
   }
 }
+
+export async function deleteUserChat(chatId) {
+  try {
+    await fetch(`${API}/api/chats/${encodeURIComponent(chatId)}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+  } catch {
+    // ignore
+  }
+}
