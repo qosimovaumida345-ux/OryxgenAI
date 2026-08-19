@@ -61,41 +61,67 @@ export async function fetchCatalog() {
 }
 
 // Chat Streaming
-export async function streamChat(model, messages, onDelta, onThinking, chatId) {
-  const res = await fetch(`${API}/api/chat`, {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ model, messages, chatId }),
-  });
+export async function streamChat(arg1, arg2, arg3, arg4, arg5) {
+  let model, messages, systemPrompt, chatId, onDelta, onThinking, onDone, onError;
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Server busy" }));
-    throw new Error(err.error || "Request failed");
+  if (typeof arg1 === "object" && !Array.isArray(arg1)) {
+    model = arg1.model;
+    messages = arg1.messages;
+    systemPrompt = arg1.systemPrompt;
+    chatId = arg1.chatId;
+    onDelta = arg2;
+    onThinking = arg3;
+    onDone = arg4;
+    onError = arg5;
+  } else {
+    model = arg1;
+    messages = arg2;
+    onDelta = arg3;
+    onThinking = arg4;
+    chatId = arg5;
   }
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  try {
+    const res = await fetch(`${API}/api/chat`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ model, messages, systemPrompt, chatId }),
+    });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      try {
-        const json = JSON.parse(payload);
-        if (json.error) throw new Error(json.error);
-        if (json.thinking && onThinking) onThinking(json.thinking);
-        if (json.content && onDelta) onDelta(json.content);
-      } catch (err) {
-        if (err.message && !err.message.includes("JSON")) throw err;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Server band yoki xatolik yuz berdi" }));
+      throw new Error(err.error || "So'rov bajarilmadi");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const json = JSON.parse(payload);
+          if (json.error) throw new Error(json.error);
+          if (json.thinking && onThinking) onThinking(json.thinking);
+          if (json.content && onDelta) onDelta(json.content);
+        } catch (err) {
+          if (err.message && !err.message.includes("JSON")) throw err;
+        }
       }
     }
+
+    if (onDone) onDone();
+  } catch (err) {
+    if (onError) onError(err.message || "Xatolik yuz berdi");
+    else throw err;
   }
 }
 
