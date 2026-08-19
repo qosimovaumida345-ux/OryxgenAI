@@ -50,10 +50,17 @@
 }
 
 .loading-core-logo {
-  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.loading-logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: 8px;
+  animation: pulse-glow 2s ease-in-out infinite alternate;
 }
 
 .pulse-mark {

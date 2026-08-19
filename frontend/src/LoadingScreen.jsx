@@ -18,14 +18,7 @@ export default function LoadingScreen({ message = "Server bilan xavfsiz ulanish 
           <div className="loading-ring-outer" />
           <div className="loading-ring-inner" />
           <div className="loading-core-logo">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32" className="pulse-mark">
-              <g transform="rotate(-30 12 12)">
-                <circle cx="7.3" cy="3.2" r="1.45" />
-                <rect x="5.5" y="4.7" width="3.6" height="14.6" rx="1.8" />
-                <rect x="14.9" y="4.7" width="3.6" height="14.6" rx="1.8" />
-                <circle cx="16.7" cy="20.8" r="1.45" />
-              </g>
-            </svg>
+            <img src="/Logo.png" alt="Oryxgen Logo" className="loading-logo-img" />
           </div>
         </div>
 
@@ -38,7 +31,7 @@ export default function LoadingScreen({ message = "Server bilan xavfsiz ulanish 
 
         <div className="loading-footer-hint">
           <span className="status-dot-pulse" />
-          {seconds > 5 ? `Render server uyg'onmoqda (${seconds}s)...` : "Xizmatlar tekshirilmoqda..."}
+          {seconds > 5 ? `Server uyg'onmoqda (${seconds}s)...` : "Xizmatlar tekshirilmoqda..."}
         </div>
 
         {seconds > 10 && onRetry && (

@@ -5,32 +5,32 @@ import { CompanyLogo } from "./Logos";
 import "./ImageStudio.css";
 
 const IMAGE_MODELS = [
-  { id: "flux", name: "Flux (Standard)", company: "Black Forest", desc: "Supreme photorealism & detail", logoKey: "flux" },
-  { id: "flux-schnell", name: "Flux Schnell", company: "Black Forest", desc: "Ultra-fast generation", logoKey: "flux" },
-  { id: "flux-dev", name: "Flux Dev", company: "Black Forest", desc: "Artistic precision & lighting", logoKey: "flux" },
-  { id: "midjourney-v6", name: "Midjourney v6", company: "Midjourney", desc: "Cinematic aesthetics & textures", logoKey: "midjourney" },
-  { id: "dalle-3", name: "DALL·E 3", company: "OpenAI", desc: "Complex semantic following", logoKey: "openai" },
-  { id: "sdxl", name: "Stable Diffusion XL", company: "Stability", desc: "High-contrast dynamic art", logoKey: "stability" },
-  { id: "ideogram", name: "Ideogram v2", company: "Ideogram", desc: "World-class text in image", logoKey: "ideogram" },
-  { id: "imagen-3", name: "Google Imagen 3", company: "Google", desc: "DeepMind photorealism", logoKey: "google" },
+  { id: "flux", name: "Flux (Standard)", company: "Black Forest", desc: "Fotorealizm va detallar", logoKey: "flux" },
+  { id: "flux-schnell", name: "Flux Schnell", company: "Black Forest", desc: "Tezkor generatsiya", logoKey: "flux" },
+  { id: "flux-dev", name: "Flux Dev", company: "Black Forest", desc: "Badiiy yorug'lik va tekstura", logoKey: "flux" },
+  { id: "midjourney-v6", name: "Midjourney v6", company: "Midjourney", desc: "Kinematik estetika", logoKey: "midjourney" },
+  { id: "dalle-3", name: "DALL·E 3", company: "OpenAI", desc: "Semantik ko'rsatmalarga aniq rioya", logoKey: "openai" },
+  { id: "sdxl", name: "Stable Diffusion XL", company: "Stability", desc: "Yuqori dinamik diapazon", logoKey: "stability" },
+  { id: "ideogram", name: "Ideogram v2", company: "Ideogram", desc: "Rasm ichida matn yozish", logoKey: "ideogram" },
+  { id: "imagen-3", name: "Google Imagen 3", company: "Google", desc: "DeepMind fotorealistik dvigateli", logoKey: "google" },
 ];
 
 const ASPECT_RATIOS = [
-  { id: "1:1", label: "1:1 Kvadrat", width: 1024, height: 1024, icon: "square" },
-  { id: "16:9", label: "16:9 Landshaft", width: 1280, height: 720, icon: "landscape" },
-  { id: "9:16", label: "9:16 Portret / Reels", width: 720, height: 1280, icon: "portrait" },
-  { id: "4:3", label: "4:3 Standart", width: 1024, height: 768, icon: "standard" },
-  { id: "3:4", label: "3:4 Vertikal", width: 768, height: 1024, icon: "vertical" },
+  { id: "1:1", label: "1:1 Kvadrat", width: 1024, height: 1024 },
+  { id: "16:9", label: "16:9 Landshaft", width: 1280, height: 720 },
+  { id: "9:16", label: "9:16 Portret", width: 720, height: 1280 },
+  { id: "4:3", label: "4:3 Standart", width: 1024, height: 768 },
+  { id: "3:4", label: "3:4 Vertikal", width: 768, height: 1024 },
 ];
 
 const STYLE_PRESETS = [
   { label: "Barchasi (Oddiy)", suffix: "" },
-  { label: "🎬 Kinematografik", suffix: ", cinematic lighting, 8k resolution, photorealistic, octane render, unreal engine 5" },
-  { label: "🌸 Anime & Manga", suffix: ", modern makoto shinkai anime style, vibrant aesthetic, highly detailed illustration" },
-  { label: "📸 8K Fotorealizm", suffix: ", ultra-realistic photography, 35mm lens, depth of field, natural soft lighting" },
-  { label: "🌃 Cyberpunk Neon", suffix: ", cyberpunk aesthetic, neon lights, futuristic megacity, volumetric smoke" },
-  { label: "🔮 3D Render & Pixar", suffix: ", 3d character rendering, cute pixar disney style, vibrant colors, raytracing" },
-  { label: "🐉 Qorong'u Fantaziya", suffix: ", dark fantasy, epic concept art, intricate armor, mystical atmosphere, trending on artstation" },
+  { label: "Kinematografik", suffix: ", cinematic lighting, 8k resolution, photorealistic, octane render, unreal engine 5" },
+  { label: "Anime & Manga", suffix: ", modern makoto shinkai anime style, vibrant aesthetic, highly detailed illustration" },
+  { label: "8K Fotorealizm", suffix: ", ultra-realistic photography, 35mm lens, depth of field, natural soft lighting" },
+  { label: "Cyberpunk Neon", suffix: ", cyberpunk aesthetic, neon lights, futuristic megacity, volumetric smoke" },
+  { label: "3D Render & Pixar", suffix: ", 3d character rendering, cute pixar disney style, vibrant colors, raytracing" },
+  { label: "Qorong'u Fantaziya", suffix: ", dark fantasy, epic concept art, intricate armor, mystical atmosphere, trending on artstation" },
 ];
 
 export default function ImageStudio() {
@@ -70,7 +70,6 @@ export default function ImageStudio() {
       timestamp: new Date().toLocaleTimeString(),
     };
 
-    // Preload image
     const preloader = new Image();
     preloader.src = url;
     preloader.onload = () => {
@@ -80,12 +79,11 @@ export default function ImageStudio() {
       try {
         localStorage.setItem("oryxgen_image_gallery", JSON.stringify(updatedGallery));
       } catch {
-        // ignore
+        /* ignore */
       }
       setIsGenerating(false);
     };
     preloader.onerror = () => {
-      // Still show with fallback
       setCurrentImage(imgObj);
       setIsGenerating(false);
     };
@@ -98,59 +96,55 @@ export default function ImageStudio() {
 
   const handleDownload = async (imgUrl, filename = "oryxgen-ai-art.jpg") => {
     try {
-      const res = await fetch(imgUrl);
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const response = await fetch(imgUrl);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
     } catch {
       window.open(imgUrl, "_blank");
     }
   };
 
-  const handleCopyPrompt = (p) => {
-    navigator.clipboard.writeText(p);
+  const handleCopyPrompt = (text) => {
+    navigator.clipboard.writeText(text);
     setCopiedPrompt(true);
     setTimeout(() => setCopiedPrompt(false), 2000);
   };
 
   return (
     <div className="image-studio-layout">
-      {/* Studio Header */}
+      {/* Header */}
       <header className="studio-header">
         <div className="header-left">
           <Link to="/" className="studio-logo">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
-              <g transform="rotate(-30 12 12)">
-                <circle cx="7.3" cy="3.2" r="1.45" />
-                <rect x="5.5" y="4.7" width="3.6" height="14.6" rx="1.8" />
-                <rect x="14.9" y="4.7" width="3.6" height="14.6" rx="1.8" />
-                <circle cx="16.7" cy="20.8" r="1.45" />
-              </g>
-            </svg>
-            <span>Oryxgen<span className="logo-suffix">.ai</span> Image Studio</span>
+            <img src="/Logo.png" alt="Oryxgen Logo" className="studio-brand-logo" />
+            <span>Oryxgen<small className="logo-suffix">.ai</small></span>
           </Link>
-          <span className="pollinations-badge">Pollinations AI Free Engine</span>
+          <span className="pollinations-badge">Pollinations AI Engine</span>
         </div>
 
         <div className="header-right">
           <Link to="/app" className="nav-btn-chat">
-            💬 Chat-ga o'tish
+            Chat & Modellar
           </Link>
           <Link to="/" className="nav-btn-landing">
-            ⚡ Vesper Landing
+            Bosh sahifa
           </Link>
         </div>
       </header>
 
-      {/* Studio Content */}
+      {/* Main Grid */}
       <div className="studio-main-grid">
-        {/* Left Controls Panel */}
-        <div className="studio-controls-panel">
+        {/* Controls Column */}
+        <aside className="studio-controls-panel">
           <form onSubmit={handleGenerate} className="studio-prompt-form">
+            {/* Prompt Input */}
             <div className="control-section">
               <div className="section-label-row">
                 <label className="section-label">Tasvir Tavsifi (Prompt)</label>
@@ -160,21 +154,22 @@ export default function ImageStudio() {
                   onClick={handleEnhance}
                   disabled={!prompt.trim()}
                 >
-                  ✨ Promptni Boyitish
+                  Promptni Kuchaytirish
                 </button>
               </div>
               <textarea
                 className="studio-prompt-textarea"
                 rows={4}
-                placeholder="Tasvirlamoqchi bo'lgan narsangizni yozing (Masalan: Toshkent 2050 yilda, neon chiroqlar, uchuvchi mashinalar, 8k fotorealizm)..."
+                placeholder="Yaratmoqchi bo'lgan tasviringizni batafsil tasvirlang..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
+                autoFocus
               />
             </div>
 
-            {/* Model Selector */}
+            {/* Model Selection */}
             <div className="control-section">
-              <label className="section-label">Generatsiya Modeli</label>
+              <label className="section-label">Model Dvigateli</label>
               <div className="models-select-grid">
                 {IMAGE_MODELS.map((m) => (
                   <button
@@ -193,9 +188,9 @@ export default function ImageStudio() {
               </div>
             </div>
 
-            {/* Aspect Ratio Selector */}
+            {/* Aspect Ratio */}
             <div className="control-section">
-              <label className="section-label">O'lcham / Nisbat (Aspect Ratio)</label>
+              <label className="section-label">Tasvir Nisbati (Format)</label>
               <div className="ratios-grid">
                 {ASPECT_RATIOS.map((r) => (
                   <button
@@ -213,22 +208,22 @@ export default function ImageStudio() {
 
             {/* Style Presets */}
             <div className="control-section">
-              <label className="section-label">Vizual Uslub (Style Preset)</label>
+              <label className="section-label">Uslub (Style)</label>
               <div className="styles-scroll-row">
-                {STYLE_PRESETS.map((s, idx) => (
+                {STYLE_PRESETS.map((st) => (
                   <button
-                    key={idx}
+                    key={st.label}
                     type="button"
-                    className={`style-chip ${selectedStyle.label === s.label ? "active" : ""}`}
-                    onClick={() => setSelectedStyle(s)}
+                    className={`style-chip ${selectedStyle.label === st.label ? "active" : ""}`}
+                    onClick={() => setSelectedStyle(st)}
                   >
-                    {s.label}
+                    {st.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Generate Button */}
+            {/* Generate Action Button */}
             <button
               type="submit"
               className="studio-generate-btn"
@@ -236,18 +231,18 @@ export default function ImageStudio() {
             >
               {isGenerating ? (
                 <>
-                  <span className="generate-spinner" />
-                  Sun'iy intellekt chizmoqda...
+                  <div className="generate-spinner" />
+                  <span>Tasvir yaratilmoqda...</span>
                 </>
               ) : (
-                <>🎨 Tasvirni Yaratish (Bepul)</>
+                <span>Tasvirni Yaratish</span>
               )}
             </button>
           </form>
-        </div>
+        </aside>
 
-        {/* Right Preview Panel */}
-        <div className="studio-preview-panel">
+        {/* Preview & Gallery Column */}
+        <main className="studio-preview-panel">
           {currentImage ? (
             <div className="preview-card">
               <div className="preview-image-wrapper" onClick={() => setLightboxImage(currentImage)}>
@@ -265,77 +260,66 @@ export default function ImageStudio() {
               </div>
 
               <div className="preview-footer">
-                <div className="preview-prompt-text">
-                  <span>"{currentImage.prompt}"</span>
-                </div>
+                <p className="preview-prompt-text">{currentImage.prompt}</p>
                 <div className="preview-actions-row">
-                  <button
-                    type="button"
-                    className="action-btn"
-                    onClick={() => handleCopyPrompt(currentImage.prompt)}
-                  >
-                    {copiedPrompt ? "✓ Nusxalandi" : "📋 Promptdan nusxa olish"}
-                  </button>
                   <button
                     type="button"
                     className="action-btn primary"
                     onClick={() => handleDownload(currentImage.url, `oryxgen-${currentImage.id}.jpg`)}
                   >
-                    ⬇️ Yuklab olish (HD)
+                    Yuklab olish (HD)
+                  </button>
+                  <button
+                    type="button"
+                    className="action-btn"
+                    onClick={() => handleCopyPrompt(currentImage.prompt)}
+                  >
+                    {copiedPrompt ? "Prompt nusxalandi" : "Promptni nusxalash"}
                   </button>
                 </div>
               </div>
             </div>
           ) : (
             <div className="preview-placeholder">
-              <div className="placeholder-icon">🎨</div>
-              <h3>Tasvir yaratishga tayyormisiz?</h3>
-              <p>Chap tarafdagi maydonga tasvir tavsifini yozing va "Tasvirni Yaratish" tugmasini bosing.</p>
-              <div className="quick-suggestions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPrompt("Futuristik kiberpank shahar, neon chiroqlar, yomg'ir va uchuvchi transportlar");
-                  }}
-                >
-                  🏙️ Kiberpank shahar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPrompt("Kosmik fazoda suzib yurgan sehrli shisha orol, yulduzlar tumanligi");
-                  }}
-                >
-                  🌌 Sehrli kosmik orol
-                </button>
+              <div className="placeholder-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="3" />
+                  <circle cx="8.5" cy="8.5" r="2" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
               </div>
+              <h3>Tasvir Studiyasi Tayyor</h3>
+              <p>Chap panelda tavsif yozing va tugmani bosing.</p>
             </div>
           )}
 
-          {/* Past Generations Gallery */}
+          {/* History Gallery */}
           {gallery.length > 0 && (
-            <div className="studio-gallery-section">
-              <h4>Oxirgi yaratilgan tasvirlar ({gallery.length})</h4>
+            <section className="studio-gallery-section">
+              <h4>Yaratilgan Tasvirlar ({gallery.length})</h4>
               <div className="gallery-grid">
                 {gallery.map((item) => (
                   <div
                     key={item.id}
                     className="gallery-item"
-                    onClick={() => setCurrentImage(item)}
+                    onClick={() => {
+                      setCurrentImage(item);
+                      setLightboxImage(item);
+                    }}
                   >
                     <img src={item.url} alt={item.prompt} loading="lazy" />
                     <div className="gallery-item-overlay">
-                      <span>{item.model}</span>
+                      <span>{item.ratio}</span>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           )}
-        </div>
+        </main>
       </div>
 
-      {/* Lightbox Modal */}
+      {/* Full-view Lightbox Modal */}
       {lightboxImage && (
         <div className="lightbox-backdrop" onClick={() => setLightboxImage(null)}>
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
@@ -352,9 +336,9 @@ export default function ImageStudio() {
               <button
                 type="button"
                 className="action-btn primary"
-                onClick={() => handleDownload(lightboxImage.url)}
+                onClick={() => handleDownload(lightboxImage.url, `oryxgen-${lightboxImage.id}.jpg`)}
               >
-                ⬇️ Yuqori sifatda yuklab olish
+                Yuklab olish
               </button>
             </div>
           </div>

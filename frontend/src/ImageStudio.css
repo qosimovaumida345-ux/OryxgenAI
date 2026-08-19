@@ -33,6 +33,13 @@
   color: #ffffff;
 }
 
+.studio-brand-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
 .studio-logo .logo-suffix {
   font-weight: 400;
   color: #9a9a9a;

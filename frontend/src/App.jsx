@@ -1,22 +1,15 @@
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import LoadingScreen from "./LoadingScreen";
-import "./index.css";
-
-// Lazy imports for code-splitting
-const Landing = () => import("./Landing.jsx").then((m) => ({ default: m.default }));
-const Chat = () => import("./Chat.jsx").then((m) => ({ default: m.default }));
-const ImageStudio = () => import("./ImageStudio.jsx").then((m) => ({ default: m.default }));
-
 import LandingPage from "./Landing.jsx";
 import ChatPage from "./Chat.jsx";
 import ImageStudioPage from "./ImageStudio.jsx";
+import "./index.css";
 
 export default function App() {
   const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
-    // Ensure fonts are loaded before showing content
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => {
         setTimeout(() => setAppReady(true), 150);
