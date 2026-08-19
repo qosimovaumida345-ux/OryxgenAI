@@ -21,7 +21,7 @@ const COUNTRY_CODES = [
   { code: "+86", country: "China" },
 ];
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
+export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = true }) {
   const [tab, setTab] = useState("email"); // "email" | "phone" | "google"
   const [step, setStep] = useState(1); // 1: target input, 2: OTP verification
   const [emailInput, setEmailInput] = useState("");
@@ -102,7 +102,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     try {
       const res = await verifyAuthCode(targetValue, code, name);
       onAuthSuccess(res.user);
-      onClose();
+      if (onClose) onClose();
     } catch (err) {
       setError(err.message || "Kod noto'g'ri yoki muddati o'tgan");
     } finally {
@@ -132,7 +132,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || "Oryxgen")}`
       );
       onAuthSuccess(res.user);
-      onClose();
+      if (onClose) onClose();
     } catch (err) {
       setError(err.message || "Google orqali kirishda xatolik yuz berdi");
     } finally {
@@ -141,11 +141,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   };
 
   return (
-    <div className="auth-backdrop" onClick={onClose}>
+    <div className="auth-backdrop" onClick={closable ? onClose : undefined}>
       <div className="auth-card" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="auth-close-btn" onClick={onClose} aria-label="Yopish">
-          ✕
-        </button>
+        {closable && (
+          <button type="button" className="auth-close-btn" onClick={onClose} aria-label="Yopish">
+            ✕
+          </button>
+        )}
 
         <div className="auth-header">
           <div className="auth-logo-badge">

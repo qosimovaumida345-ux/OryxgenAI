@@ -1,10 +1,10 @@
 import jwt from "jsonwebtoken";
 import { findOrCreateUser, saveOtp, verifyOtp } from "./db.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "oryxgen-ultra-secret-key-2026";
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://avg-ai-creator.site";
+const JWT_SECRET = (process.env.JWT_SECRET || "oryxgen-ultra-secret-key-2026").trim();
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || "").trim();
+const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
+const FRONTEND_URL = (process.env.FRONTEND_URL || "https://avg-ai-creator.site").trim().replace(/\/$/, "");
 
 export function generateToken(user) {
   return jwt.sign(

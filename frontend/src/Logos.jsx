@@ -1,6 +1,53 @@
-export function CompanyLogo({ name = "openai", size = 20, className = "" }) {
-  const key = String(name).toLowerCase();
+import { useState } from "react";
 
+const IMAGE_MAP = {
+  anthropic: "/models/anthropic.jpg",
+  claude: "/models/anthropic.jpg",
+  openai: "/models/openai.jpg",
+  chatgpt: "/models/openai.jpg",
+  google: "/models/google.jpg",
+  gemini: "/models/google.jpg",
+  deepseek: "/models/deepseek.jpg",
+  meta: "/models/meta.jpg",
+  llama: "/models/meta.jpg",
+  alibaba: "/models/alibaba.jpg",
+  qwen: "/models/alibaba.jpg",
+  mistral: "/models/mistral.png",
+  mixtral: "/models/mixtral.png",
+  cohere: "/models/cohere.png",
+  fireworks: "/models/fireworks.png",
+  xai: "/models/xai.png",
+  grok: "/models/xai.png",
+};
+
+export function CompanyLogo({ name = "openai", size = 20, className = "" }) {
+  const [imgError, setImgError] = useState(false);
+  const key = String(name).toLowerCase().trim();
+  const imageSrc = IMAGE_MAP[key];
+
+  if (imageSrc && !imgError) {
+    return (
+      <img
+        src={imageSrc}
+        alt={name}
+        width={size}
+        height={size}
+        className={`company-logo-img ${className}`}
+        style={{
+          width: size,
+          height: size,
+          objectFit: "cover",
+          borderRadius: 4,
+          display: "inline-block",
+          verticalAlign: "middle",
+          background: "#111",
+        }}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  // High-Resolution Vector Fallbacks
   switch (key) {
     case "anthropic":
     case "claude":
@@ -58,6 +105,7 @@ export function CompanyLogo({ name = "openai", size = 20, className = "" }) {
       );
 
     case "mistral":
+    case "mixtral":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
           <rect x="2" y="3" width="4" height="4" fill="#FF7000" />
@@ -85,13 +133,6 @@ export function CompanyLogo({ name = "openai", size = 20, className = "" }) {
         <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
           <path d="M12 2L3 7v10l9 5 9-5V7l-9-5zm0 3.2l6 3.3v6.9l-6 3.3-6-3.3v-6.9l6-3.3z" fill="#615CED" />
           <circle cx="12" cy="12" r="2.5" fill="#615CED" />
-        </svg>
-      );
-
-    case "groq":
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2V7h2v5.5z" fill="#F55036" />
         </svg>
       );
 

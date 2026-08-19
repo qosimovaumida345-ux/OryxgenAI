@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { imageUrl } from "./api";
+import { getStoredUser, imageUrl } from "./api";
 import { CompanyLogo } from "./Logos";
+import AuthModal from "./AuthModal";
 import "./ImageStudio.css";
 
 const IMAGE_MODELS = [
@@ -34,6 +35,8 @@ const STYLE_PRESETS = [
 ];
 
 export default function ImageStudio() {
+  const [currentUser, setCurrentUser] = useState(getStoredUser());
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState("flux");
   const [selectedRatio, setSelectedRatio] = useState(ASPECT_RATIOS[0]);
@@ -53,6 +56,10 @@ export default function ImageStudio() {
 
   const handleGenerate = (e) => {
     e?.preventDefault();
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      return;
+    }
     if (!prompt.trim() || isGenerating) return;
 
     setIsGenerating(true);
@@ -344,6 +351,17 @@ export default function ImageStudio() {
           </div>
         </div>
       )}
+
+      {/* Auth Modal Guard */}
+      <AuthModal
+        isOpen={!currentUser || isAuthOpen}
+        closable={Boolean(currentUser)}
+        onClose={() => setIsAuthOpen(false)}
+        onAuthSuccess={(user) => {
+          setCurrentUser(user);
+          setIsAuthOpen(false);
+        }}
+      />
     </div>
   );
 }

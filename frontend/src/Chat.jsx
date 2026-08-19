@@ -457,7 +457,6 @@ export default function Chat() {
               </div>
               <div className="model-pill-info">
                 <span className="model-pill-name">{activeModelMeta.displayName}</span>
-                {activeModelMeta.isPremium && <span className="premium-tag">PREMIUM</span>}
               </div>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                 <path d="M7 10l5 5 5-5z" />
@@ -724,7 +723,6 @@ export default function Chat() {
                   <div className="model-item-content">
                     <div className="model-item-title-row">
                       <span className="model-item-name">{m.displayName}</span>
-                      {m.isPremium && <span className="premium-badge">PREMIUM</span>}
                     </div>
                     <div className="model-item-company">{m.company}</div>
                     <div className="model-item-desc">{m.description}</div>
@@ -841,9 +839,10 @@ export default function Chat() {
         </div>
       )}
 
-      {/* Authentication Modal */}
+      {/* Authentication Modal - Guard */}
       <AuthModal
-        isOpen={isAuthOpen}
+        isOpen={!currentUser || isAuthOpen}
+        closable={Boolean(currentUser)}
         onClose={() => setIsAuthOpen(false)}
         onAuthSuccess={(user) => {
           setCurrentUser(user);
