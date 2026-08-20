@@ -30,7 +30,16 @@ function getStoredChats() {
       }
     }
   } catch {}
-  return [{ id: "chat-1", title: "Yangi suhbat", model: DEFAULT_MODEL, messages: [] }];
+  return [{ 
+    id: "chat-1", 
+    title: "Yangi suhbat", 
+    model: DEFAULT_MODEL, 
+    messages: [],
+    mode: "chat",
+    systemPrompt: SKILL_PRESETS[0].systemPrompt,
+    skillId: "default",
+    projectFiles: {}
+  }];
 }
 
 function getStoredActiveId(initialChats) {
@@ -85,8 +94,11 @@ export default function Chat() {
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
   const [thinkingTime, setThinkingTime] = useState(0);
 
-  const [systemPrompt, setSystemPrompt] = useState(SKILL_PRESETS[0].systemPrompt);
-  const [activeSkillId, setActiveSkillId] = useState("default");
+  const [systemPrompt, setSystemPrompt] = useState(() => activeChat?.systemPrompt || SKILL_PRESETS[0].systemPrompt);
+  const [activeSkillId, setActiveSkillId] = useState(() => activeChat?.skillId || "default");
+  const [appMode, setAppMode] = useState(() => activeChat?.mode || "chat");
+  const [projectFiles, setProjectFiles] = useState(() => activeChat?.projectFiles || {});
+  
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
 
   const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
@@ -110,6 +122,18 @@ export default function Chat() {
     try {
       localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updatedChats));
     } catch {}
+  };
+
+  const updateActiveChatState = (updates) => {
+    const updatedChats = chats.map((c) => {
+      if (c.id === activeChatId) {
+        const newChat = { ...c, ...updates };
+        saveUserChat(newChat);
+        return newChat;
+      }
+      return c;
+    });
+    persistChats(updatedChats);
   };
 
   useEffect(() => {
@@ -195,6 +219,10 @@ export default function Chat() {
     setActiveChatId(chatId);
     setMessages(target.messages || []);
     if (target.model) setSelectedModel(target.model);
+    setSystemPrompt(target.systemPrompt || SKILL_PRESETS[0].systemPrompt);
+    setActiveSkillId(target.skillId || "default");
+    setAppMode(target.mode || "chat");
+    setProjectFiles(target.projectFiles || {});
     setCurrentThinking("");
     try {
       localStorage.setItem(ACTIVE_CHAT_KEY, chatId);
@@ -204,11 +232,24 @@ export default function Chat() {
 
   const handleNewChat = () => {
     const newId = `chat-${Date.now()}`;
-    const newChatObj = { id: newId, title: "Yangi suhbat", model: selectedModel, messages: [] };
+    const newChatObj = { 
+      id: newId, 
+      title: "Yangi suhbat", 
+      model: selectedModel, 
+      messages: [],
+      mode: "chat",
+      systemPrompt: SKILL_PRESETS[0].systemPrompt,
+      skillId: "default",
+      projectFiles: {}
+    };
     const updated = [newChatObj, ...chats];
     persistChats(updated);
     setActiveChatId(newId);
     setMessages([]);
+    setSystemPrompt(newChatObj.systemPrompt);
+    setActiveSkillId(newChatObj.skillId);
+    setAppMode(newChatObj.mode);
+    setProjectFiles(newChatObj.projectFiles);
     setCurrentThinking("");
     try {
       localStorage.setItem(ACTIVE_CHAT_KEY, newId);
@@ -222,7 +263,16 @@ export default function Chat() {
     const finalChats =
       remaining.length > 0
         ? remaining
-        : [{ id: `chat-${Date.now()}`, title: "Yangi suhbat", model: DEFAULT_MODEL, messages: [] }];
+        : [{ 
+            id: `chat-${Date.now()}`, 
+            title: "Yangi suhbat", 
+            model: DEFAULT_MODEL, 
+            messages: [],
+            mode: "chat",
+            systemPrompt: SKILL_PRESETS[0].systemPrompt,
+            skillId: "default",
+            projectFiles: {}
+          }];
     persistChats(finalChats);
     deleteUserChat(chatId);
 
@@ -231,6 +281,10 @@ export default function Chat() {
       setActiveChatId(nextChat.id);
       setMessages(nextChat.messages || []);
       if (nextChat.model) setSelectedModel(nextChat.model);
+      setSystemPrompt(nextChat.systemPrompt || SKILL_PRESETS[0].systemPrompt);
+      setActiveSkillId(nextChat.skillId || "default");
+      setAppMode(nextChat.mode || "chat");
+      setProjectFiles(nextChat.projectFiles || {});
       setCurrentThinking("");
       try {
         localStorage.setItem(ACTIVE_CHAT_KEY, nextChat.id);
@@ -294,6 +348,27 @@ export default function Chat() {
         },
         () => {
           setIsStreaming(false);
+          
+          // --- VFS File Parser ---
+          let updatedFiles = { ...projectFiles };
+          let filesChanged = false;
+          
+          if (appMode === "agent") {
+            const fileRegex = /<file path="([^"]+)">([\s\S]*?)<\/file>/g;
+            let match;
+            while ((match = fileRegex.exec(assistantContent)) !== null) {
+              const filePath = match[1];
+              const fileContent = match[2];
+              updatedFiles[filePath] = fileContent;
+              filesChanged = true;
+            }
+          }
+
+          if (filesChanged) {
+            setProjectFiles(updatedFiles);
+          }
+          // -----------------------
+
           const finalMessages = [
             ...newMessages,
             { id: assistantMsgId, role: "assistant", content: assistantContent, thinking: assistantThinking, model: selectedModel },
@@ -305,7 +380,13 @@ export default function Chat() {
               if (c.id === activeChatId) {
                 const firstUserMsg = finalMessages.find((m) => m.role === "user");
                 const title = c.title === "Yangi suhbat" && firstUserMsg ? firstUserMsg.content.slice(0, 32) : c.title;
-                const updatedChat = { ...c, title, messages: finalMessages, model: selectedModel };
+                const updatedChat = { 
+                  ...c, 
+                  title, 
+                  messages: finalMessages, 
+                  model: selectedModel,
+                  projectFiles: filesChanged ? updatedFiles : c.projectFiles
+                };
                 saveUserChat(updatedChat);
                 return updatedChat;
               }
@@ -543,6 +624,57 @@ export default function Chat() {
           </div>
 
           <div className="navbar-right">
+            <div className="app-mode-switcher">
+              <button
+                type="button"
+                className={`mode-btn ${appMode === "plan" ? "active" : ""}`}
+                onClick={() => {
+                  setAppMode("plan");
+                  updateActiveChatState({ mode: "plan" });
+                }}
+                title="Plan Mode: Loyiha strukturasini tuzish"
+              >
+                Plan
+              </button>
+              <button
+                type="button"
+                className={`mode-btn ${appMode === "agent" || appMode === "chat" ? "active" : ""}`}
+                onClick={() => {
+                  setAppMode("agent");
+                  updateActiveChatState({ mode: "agent" });
+                }}
+                title="Agent Mode: Kod yozish va fayllarni tahrirlash"
+              >
+                Agent
+              </button>
+              <button
+                type="button"
+                className={`mode-btn ${appMode === "ask" ? "active" : ""}`}
+                onClick={() => {
+                  setAppMode("ask");
+                  updateActiveChatState({ mode: "ask" });
+                }}
+                title="Ask Mode: Kodni o'zgartirmasdan savol berish"
+              >
+                Ask
+              </button>
+            </div>
+            
+            {Object.keys(projectFiles).length > 0 && (
+              <a
+                href={`/preview/${activeChatId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="live-preview-btn"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                Preview
+              </a>
+            )}
+
             <button
               type="button"
               className="nav-btn-action"

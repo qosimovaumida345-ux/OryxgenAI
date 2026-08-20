@@ -5,6 +5,7 @@ import LandingPage from "./Landing.jsx";
 import ChatPage from "./Chat.jsx";
 import ImageStudioPage from "./ImageStudio.jsx";
 import "./index.css";
+import PreviewPage from "./Preview.jsx";
 
 export default function App() {
   const [appReady, setAppReady] = useState(false);
@@ -28,6 +29,7 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/app" element={<ChatPage />} />
       <Route path="/image" element={<ImageStudioPage />} />
+      <Route path="/preview/:id" element={<PreviewPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

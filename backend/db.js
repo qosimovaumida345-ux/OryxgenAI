@@ -54,9 +54,23 @@ export async function initDb() {
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         title VARCHAR(255) NOT NULL,
         model VARCHAR(100) NOT NULL,
+        mode VARCHAR(50) DEFAULT 'chat',
+        system_prompt TEXT,
+        skill_id VARCHAR(100) DEFAULT 'default',
+        project_files JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
+
+      -- Try adding new columns if they don't exist (for existing DBs)
+      BEGIN
+        ALTER TABLE chats ADD COLUMN mode VARCHAR(50) DEFAULT 'chat';
+        ALTER TABLE chats ADD COLUMN system_prompt TEXT;
+        ALTER TABLE chats ADD COLUMN skill_id VARCHAR(100) DEFAULT 'default';
+        ALTER TABLE chats ADD COLUMN project_files JSONB DEFAULT '{}'::jsonb;
+      EXCEPTION
+        WHEN duplicate_column THEN null;
+      END;
 
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
@@ -156,7 +170,7 @@ export async function getUserChats(userId) {
   if (pool && userId) {
     try {
       const res = await pool.query(
-        "SELECT * FROM chats WHERE user_id = $1 ORDER BY updated_at DESC",
+        "SELECT id, user_id, title, model, mode, system_prompt, skill_id, project_files, updated_at FROM chats WHERE user_id = $1 ORDER BY updated_at DESC",
         [userId]
       );
       const chats = res.rows;
@@ -179,10 +193,26 @@ export async function saveUserChat(chat) {
   if (pool && chat.user_id) {
     try {
       await pool.query(
-        `INSERT INTO chats (id, user_id, title, model, updated_at) 
-         VALUES ($1, $2, $3, $4, NOW()) 
-         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, model = EXCLUDED.model, updated_at = NOW()`,
-        [chat.id, chat.user_id, chat.title, chat.model]
+        `INSERT INTO chats (id, user_id, title, model, mode, system_prompt, skill_id, project_files, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) 
+         ON CONFLICT (id) DO UPDATE SET 
+           title = EXCLUDED.title, 
+           model = EXCLUDED.model, 
+           mode = EXCLUDED.mode,
+           system_prompt = EXCLUDED.system_prompt,
+           skill_id = EXCLUDED.skill_id,
+           project_files = EXCLUDED.project_files,
+           updated_at = NOW()`,
+        [
+          chat.id, 
+          chat.user_id, 
+          chat.title, 
+          chat.model, 
+          chat.mode || "chat", 
+          chat.system_prompt || null, 
+          chat.skill_id || "default", 
+          chat.project_files ? JSON.stringify(chat.project_files) : "{}"
+        ]
       );
       if (Array.isArray(chat.messages) && chat.messages.length > 0) {
         await pool.query("DELETE FROM messages WHERE chat_id = $1", [chat.id]);
