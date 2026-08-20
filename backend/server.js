@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import { findModel, PUBLIC_IMAGE_MODELS, PUBLIC_MODELS } from "./catalog.js";
 import { pollinationsModel, refreshFreeModels, resolveUpstream, getFreePool } from "./mapper.js";
 import { initDb, getUserChats, saveUserChat, deleteUserChat } from "./db.js";
-import { authMiddleware, setupAuthRoutes } from "./auth.js";
+import { authMiddleware, setupAuthRoutes, verifyToken } from "./auth.js";
 
 dotenv.config();
 
@@ -368,6 +368,17 @@ const MCP_TOOLS = [
       },
     },
   },
+  {
+    name: "codex_generate_app",
+    description: "Autonomous App Generator (CodeX Mode). Provide a prompt to build a complete web app. It will write the code, save the project, and return a live preview URL that you can share.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "What kind of app to build (e.g. 'Build a React calculator with TailwindCSS')" },
+      },
+      required: ["prompt"],
+    },
+  },
 ];
 
 const MCP_PROMPTS = [
@@ -387,7 +398,7 @@ const MCP_PROMPTS = [
 ];
 
 // MCP JSON-RPC Handler
-async function handleMcpJsonRpc(body) {
+async function handleMcpJsonRpc(body, user) {
   const { id, method, params } = body || {};
 
   switch (method) {
@@ -523,6 +534,103 @@ async function handleMcpJsonRpc(body) {
         };
       }
 
+      if (toolName === "codex_generate_app") {
+        const prompt = args.prompt || "";
+        if (!user) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32000, message: "Authentication required for CodeX generation. Please log in." },
+          };
+        }
+
+        if (OR_KEY) {
+          try {
+            const chain = await resolveUpstream("code", "claude-4.6-sonnet"); // Fallback to sonnet/opus
+            const systemPrompt = "You are CodeX. Output a complete, working React + Tailwind web application based on the user's prompt. ONLY return the code wrapped inside <file path=\"App.jsx\">...</file> tags. Do not include markdown around the tags or explanations outside.";
+            const messages = [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: prompt }
+            ];
+
+            let generatedCode = "";
+
+            for (const upstream of chain) {
+              const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${OR_KEY}`,
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://avg-ai-creator.site",
+                  "X-Title": "Oryxgen AI MCP CodeX",
+                },
+                body: JSON.stringify({ model: upstream, messages }),
+              });
+
+              if (res.ok) {
+                const data = await res.json();
+                generatedCode = data.choices?.[0]?.message?.content || "";
+                break;
+              }
+            }
+
+            if (generatedCode) {
+              // Parse files
+              let projectFiles = {};
+              const fileRegex = /<file path="([^"]+)">([\s\S]*?)<\/file>/g;
+              let match;
+              let found = false;
+              while ((match = fileRegex.exec(generatedCode)) !== null) {
+                projectFiles[match[1]] = match[2];
+                found = true;
+              }
+              
+              if (!found) {
+                // If AI failed to use tags, just dump it to App.jsx
+                projectFiles["App.jsx"] = generatedCode;
+              }
+
+              // Create new chat session for this app
+              const newChatId = `chat-${Date.now()}`;
+              const chatObj = {
+                id: newChatId,
+                user_id: user.id,
+                title: prompt.slice(0, 30) + "...",
+                model: "CodeX Auto",
+                mode: "codex",
+                projectFiles,
+                messages: [{ id: `user-1`, role: "user", content: prompt }, { id: `assistant-1`, role: "assistant", content: generatedCode }]
+              };
+              await saveUserChat(chatObj);
+
+              const previewUrl = `https://avg-ai-creator.site/preview/${newChatId}`;
+
+              return {
+                jsonrpc: "2.0",
+                id,
+                result: {
+                  content: [
+                    { type: "text", text: `Dastur muvaffaqiyatli yaratildi!\n\nUni ushbu manzilda ko'rishingiz mumkin: ${previewUrl}` }
+                  ],
+                },
+              };
+            }
+          } catch (e) {
+            return {
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32000, message: "CodeX generation failed: " + e.message },
+            };
+          }
+        } else {
+           return {
+             jsonrpc: "2.0",
+             id,
+             error: { code: -32000, message: "OpenRouter API Key not configured." },
+           };
+        }
+      }
+
       return {
         jsonrpc: "2.0",
         id,
@@ -655,9 +763,22 @@ function setMcpCorsHeaders(res) {
   res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 }
 
+function requireMcpAuth(req, res, next) {
+  const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(" ")[1]);
+  if (!token) {
+    return res.status(401).json({ error: { code: -32000, message: "Authentication required. Please connect via https://avg-ai-creator.site" }});
+  }
+  const user = verifyToken(token);
+  if (!user) {
+    return res.status(401).json({ error: { code: -32000, message: "Invalid or expired MCP token. Please log in again." }});
+  }
+  req.user = user;
+  next();
+}
+
 // ── Streamable HTTP Transport (Claude.ai Connectors) ──
 // Single endpoint handles POST (JSON-RPC), GET (SSE notifications), DELETE (close session)
-app.post(["/api/mcp", "/mcp"], async (req, res) => {
+app.post(["/api/mcp", "/mcp"], requireMcpAuth, async (req, res) => {
   setMcpCorsHeaders(res);
 
   // Generate or reuse session ID
@@ -676,7 +797,7 @@ app.post(["/api/mcp", "/mcp"], async (req, res) => {
   if (Array.isArray(body)) {
     const results = [];
     for (const item of body) {
-      const result = await handleMcpJsonRpc(item);
+      const result = await handleMcpJsonRpc(item, req.user);
       if (result) results.push(result);
     }
     if (wantsSSE) {
@@ -694,7 +815,7 @@ app.post(["/api/mcp", "/mcp"], async (req, res) => {
   }
 
   // Single JSON-RPC request
-  const result = await handleMcpJsonRpc(body);
+  const result = await handleMcpJsonRpc(body, req.user);
 
   // Notifications have no response
   if (!result) {
@@ -713,7 +834,7 @@ app.post(["/api/mcp", "/mcp"], async (req, res) => {
 });
 
 // GET on Streamable HTTP endpoint: SSE stream for server-initiated notifications
-app.get(["/api/mcp", "/mcp"], (req, res) => {
+app.get(["/api/mcp", "/mcp"], requireMcpAuth, (req, res) => {
   setMcpCorsHeaders(res);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");

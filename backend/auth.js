@@ -14,6 +14,14 @@ export function generateToken(user) {
   );
 }
 
+export function verifyToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch {
+    return null;
+  }
+}
+
 export function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
@@ -22,12 +30,7 @@ export function authMiddleware(req, res, next) {
   }
 
   const token = header.split(" ")[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-  } catch {
-    req.user = null;
-  }
+  req.user = verifyToken(token);
   next();
 }
 

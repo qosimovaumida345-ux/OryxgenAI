@@ -10,6 +10,7 @@ import {
   getStoredUser,
   saveUserChat,
   streamChat,
+  getAuthToken,
 } from "./api";
 import AuthModal from "./AuthModal";
 import LoadingScreen from "./LoadingScreen";
@@ -112,6 +113,7 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isBackendLoading, setIsBackendLoading] = useState(true);
   const [copiedCodeId, setCopiedCodeId] = useState(null);
+  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -442,8 +444,10 @@ export default function Chat() {
   });
 
   const backendApiUrl = (import.meta.env.VITE_API_URL || "https://oryxgen-api.onrender.com").replace(/\/$/, "");
-  const mcpSseUrl = `${backendApiUrl}/api/mcp/sse`;
-  const mcpPostUrl = `${backendApiUrl}/api/mcp`;
+  const currentToken = getAuthToken();
+  const tokenQuery = currentToken ? `?token=${currentToken}` : "";
+  const mcpSseUrl = `${backendApiUrl}/api/mcp/sse${tokenQuery}`;
+  const mcpPostUrl = `${backendApiUrl}/api/mcp${tokenQuery}`;
 
   const mcpConfigJson = JSON.stringify(
     {
@@ -624,42 +628,7 @@ export default function Chat() {
           </div>
 
           <div className="navbar-right">
-            <div className="app-mode-switcher">
-              <button
-                type="button"
-                className={`mode-btn ${appMode === "plan" ? "active" : ""}`}
-                onClick={() => {
-                  setAppMode("plan");
-                  updateActiveChatState({ mode: "plan" });
-                }}
-                title="Plan Mode: Loyiha strukturasini tuzish"
-              >
-                Plan
-              </button>
-              <button
-                type="button"
-                className={`mode-btn ${appMode === "agent" || appMode === "chat" ? "active" : ""}`}
-                onClick={() => {
-                  setAppMode("agent");
-                  updateActiveChatState({ mode: "agent" });
-                }}
-                title="Agent Mode: Kod yozish va fayllarni tahrirlash"
-              >
-                Agent
-              </button>
-              <button
-                type="button"
-                className={`mode-btn ${appMode === "ask" ? "active" : ""}`}
-                onClick={() => {
-                  setAppMode("ask");
-                  updateActiveChatState({ mode: "ask" });
-                }}
-                title="Ask Mode: Kodni o'zgartirmasdan savol berish"
-              >
-                Ask
-              </button>
-            </div>
-            
+
             {Object.keys(projectFiles).length > 0 && (
               <a
                 href={`/preview/${activeChatId}`}
@@ -836,10 +805,73 @@ export default function Chat() {
         {/* Input Bar */}
         <div className="chat-input-bar">
           <div className="input-box-wrapper">
+            <div className="input-action-menu">
+              <button 
+                type="button" 
+                className={`action-plus-btn ${isModeMenuOpen ? "open" : ""}`}
+                onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
+                aria-label="Rejimni tanlash"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              
+              {isModeMenuOpen && (
+                <div className="mode-popup-menu">
+                  <button
+                    type="button"
+                    className={`popup-mode-item ${appMode === "plan" ? "active" : ""}`}
+                    onClick={() => { setAppMode("plan"); updateActiveChatState({ mode: "plan" }); setIsModeMenuOpen(false); }}
+                  >
+                    <div className="mode-icon">📋</div>
+                    <div className="mode-text">
+                      <strong>Plan</strong>
+                      <span>Loyiha arxitekturasini tuzish</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`popup-mode-item ${appMode === "agent" || appMode === "chat" ? "active" : ""}`}
+                    onClick={() => { setAppMode("agent"); updateActiveChatState({ mode: "agent" }); setIsModeMenuOpen(false); }}
+                  >
+                    <div className="mode-icon">⚡</div>
+                    <div className="mode-text">
+                      <strong>Agent</strong>
+                      <span>Kod yozish va tahrirlash</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={`popup-mode-item ${appMode === "ask" ? "active" : ""}`}
+                    onClick={() => { setAppMode("ask"); updateActiveChatState({ mode: "ask" }); setIsModeMenuOpen(false); }}
+                  >
+                    <div className="mode-icon">💬</div>
+                    <div className="mode-text">
+                      <strong>Ask</strong>
+                      <span>Fayllarga tegmasdan savol berish</span>
+                    </div>
+                  </button>
+                  <div className="popup-divider"></div>
+                  <button
+                    type="button"
+                    className={`popup-mode-item codex-mode ${appMode === "codex" ? "active" : ""}`}
+                    onClick={() => { setAppMode("codex"); updateActiveChatState({ mode: "codex" }); setIsModeMenuOpen(false); }}
+                  >
+                    <div className="mode-icon">🚀</div>
+                    <div className="mode-text">
+                      <strong>CodeX</strong>
+                      <span>Yagona g'oya — to'liq avtonom ilova</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <textarea
               ref={inputRef}
               className="chat-textarea"
-              placeholder={`${activeModelMeta.displayName} ga savol yoki buyruq yozing... (Shift+Enter yangi qator)`}
+              placeholder={`${appMode.toUpperCase()}: ${activeModelMeta.displayName} ga yozing...`}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1024,6 +1056,12 @@ export default function Chat() {
               <p className="mcp-desc">
                 Oryxgen AI to'liq MCP server sifatida ishlaydi. 200+ modellar, tasvir generatsiyasi va avtomatlashtirish imkoniyatlarini Claude ilovangizga ulang:
               </p>
+
+              {!currentToken && (
+                <div style={{ padding: "10px", background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "8px", color: "#fca5a5", fontSize: "12.5px" }}>
+                  <strong>Diqqat:</strong> Tizimga kirmagansiz! MCP orqali xavfsiz ulanish va CodeX ishlatish uchun avval tizimga (Kirish) kiring. Aks holda ulanish rad etiladi.
+                </div>
+              )}
 
               <div className="mcp-endpoint-box">
                 <span className="mcp-label">Claude.ai Connector URL (Streamable HTTP):</span>
