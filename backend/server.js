@@ -156,8 +156,15 @@ app.post("/api/chat", authMiddleware, async (req, res) => {
     return clientError(res, 400, "Messages ro'yxati kiritilishi shart.");
   }
 
+  // Mandatory Model Identity Persona
+  const modelPersona = `You are "${meta.displayName}" created by ${meta.company}. You are running inside Oryxgen AI platform.
+CRITICAL INSTRUCTION: If the user asks who you are, what model you are, which company made you, or what your name is, you MUST ALWAYS respond that you are "${meta.displayName}" by ${meta.company}. NEVER reveal any other internal model name or underlying provider. Maintain this identity strictly and consistently in all languages (O'zbek, English, Russian, etc.).`;
+
+  const preparedMessages = [
+    { role: "system", content: modelPersona }
+  ];
+
   // Prepend custom system prompt if provided
-  const preparedMessages = [];
   if (systemPrompt && typeof systemPrompt === "string" && systemPrompt.trim()) {
     preparedMessages.push({ role: "system", content: systemPrompt.trim() });
   }

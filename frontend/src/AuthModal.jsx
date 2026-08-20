@@ -55,7 +55,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
     try {
       // 1. Generate OTP on backend
       const res = await sendAuthCode(targetValue, tab);
-      const generatedOtp = res.debugCode || Math.floor(100000 + Math.random() * 900000).toString();
+      const generatedOtp = res.code || res.debugCode;
 
       // 2. If email, attempt real EmailJS dispatch if configured
       if (tab === "email" && EMAILJS_PUBLIC_KEY && EMAILJS_PUBLIC_KEY !== "YOUR_EMAILJS_PUBLIC_KEY") {
@@ -71,7 +71,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
             },
             EMAILJS_PUBLIC_KEY
           );
-          setSuccessInfo(`Tasdiqlash kodi ${emailInput} pochtasiga EmailJS orqali yuborildi.`);
+          setSuccessInfo(`Tasdiqlash kodi ${emailInput} pochtasiga yuborildi.`);
         } catch (emailErr) {
           console.warn("[EmailJS] Send warning:", emailErr);
           setSuccessInfo(`Tasdiqlash kodi tayyorlandi.`);
@@ -81,9 +81,6 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
       }
 
       setStep(2);
-      if (res.debugCode) {
-        setCode(res.debugCode);
-      }
     } catch (err) {
       setError(err.message || "Kod yuborishda xatolik yuz berdi");
     } finally {

@@ -90,42 +90,55 @@ export async function initDb() {
 }
 
 export async function saveOtp(target, code) {
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const cleanTarget = String(target || "").trim().toLowerCase();
+  const cleanCode = String(code || "").trim();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes window
   if (pool) {
     try {
+      await pool.query("DELETE FROM otps WHERE LOWER(TRIM(target)) = $1", [cleanTarget]);
       await pool.query(
-        "INSERT INTO otps (target, code, expires_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-        [target, code, expiresAt]
+        "INSERT INTO otps (target, code, expires_at) VALUES ($1, $2, $3)",
+        [cleanTarget, cleanCode, expiresAt]
       );
-      return;
-    } catch {
-      // fallback to in-memory
+    } catch (err) {
+      console.warn("DB OTP save error:", err.message);
     }
   }
-  inMemory.otps.set(target, { code, expiresAt });
+  inMemory.otps.set(cleanTarget, { code: cleanCode, expiresAt });
 }
 
 export async function verifyOtp(target, code) {
+  const cleanTarget = String(target || "").trim().toLowerCase();
+  const cleanCode = String(code || "").trim();
+
   if (pool) {
     try {
       const res = await pool.query(
-        "SELECT * FROM otps WHERE target = $1 AND code = $2 AND expires_at > NOW() ORDER BY id DESC LIMIT 1",
-        [target, code]
+        "SELECT * FROM otps WHERE LOWER(TRIM(target)) = $1 AND TRIM(code) = $2 ORDER BY id DESC LIMIT 1",
+        [cleanTarget, cleanCode]
       );
       if (res.rows.length > 0) {
-        await pool.query("DELETE FROM otps WHERE target = $1", [target]);
-        return true;
+        const row = res.rows[0];
+        const expiryTime = new Date(row.expires_at).getTime();
+        // Allow valid or small clock drift buffer
+        if (isNaN(expiryTime) || expiryTime > Date.now() - 120000) {
+          await pool.query("DELETE FROM otps WHERE LOWER(TRIM(target)) = $1", [cleanTarget]);
+          inMemory.otps.delete(cleanTarget);
+          return true;
+        }
       }
-      return false;
-    } catch {
-      // fallback
+    } catch (err) {
+      console.warn("DB OTP verify query error:", err.message);
     }
   }
 
-  const found = inMemory.otps.get(target);
-  if (found && found.code === code && found.expiresAt > new Date()) {
-    inMemory.otps.delete(target);
-    return true;
+  const found = inMemory.otps.get(cleanTarget);
+  if (found && String(found.code).trim() === cleanCode) {
+    const expiryTime = new Date(found.expiresAt).getTime();
+    if (isNaN(expiryTime) || expiryTime > Date.now() - 120000) {
+      inMemory.otps.delete(cleanTarget);
+      return true;
+    }
   }
   return false;
 }

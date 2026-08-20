@@ -37,20 +37,21 @@ export function authMiddleware(req, res, next) {
 export function setupAuthRoutes(app) {
   // 1. Send OTP code to Email or Phone
   app.post("/api/auth/send-code", async (req, res) => {
-    const { target, type } = req.body || {};
+    const { target, type, clientCode } = req.body || {};
     if (!target) {
       return res.status(400).json({ error: "Email yoki telefon raqam kiritilishi shart." });
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await saveOtp(target.trim().toLowerCase(), code);
+    const cleanTarget = String(target).trim().toLowerCase();
+    const code = (clientCode && /^\d{6}$/.test(clientCode)) ? clientCode : Math.floor(100000 + Math.random() * 900000).toString();
+    await saveOtp(cleanTarget, code);
 
-    console.log(`[AUTH] Tasdiqlash kodi (${target}): ${code}`);
+    console.log(`[AUTH] Tasdiqlash kodi (${cleanTarget}): ${code}`);
 
     res.json({
       ok: true,
-      message: `Tasdiqlash kodi ${target} ga yuborildi`,
-      debugCode: process.env.NODE_ENV !== "production" ? code : undefined,
+      code,
+      message: `Tasdiqlash kodi ${cleanTarget} ga yuborildi`,
     });
   });
 

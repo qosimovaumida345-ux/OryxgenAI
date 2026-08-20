@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import JSZip from "jszip";
 import {
   checkBackendHealth,
   clearAuthSession,
@@ -80,6 +81,100 @@ const SKILL_PRESETS = [
   },
 ];
 
+// Build Live React / Tailwind Sandbox HTML from projectFiles
+function buildSandboxHtml(files) {
+  if (!files || Object.keys(files).length === 0) {
+    return `<!DOCTYPE html><html><body style="background:#09090b;color:#71717a;display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3f3f46" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg><p style="margin-top:14px;font-size:14px;">Loyiha fayllari hali mavjud emas. CodeX orqali biror g'oya bering.</p></body></html>`;
+  }
+
+  const fileKeys = Object.keys(files);
+  const mainFileKey = fileKeys.find(k => k.endsWith("App.jsx") || k.endsWith("App.js") || k.endsWith("index.jsx") || k.endsWith("index.html")) || fileKeys[0];
+  const mainFile = files[mainFileKey] || "";
+  const customCss = files["styles.css"] || files["index.css"] || files["App.css"] || "";
+
+  // If pure HTML
+  if (mainFileKey.endsWith(".html") && !mainFile.includes("export default") && !mainFile.includes("React")) {
+    return mainFile;
+  }
+
+  // Clean React imports/exports for Babel in-browser standalone execution
+  const cleanedReactCode = mainFile
+    .replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, "")
+    .replace(/import\s+['"][^'"]+['"];?/g, "")
+    .replace(/export\s+default\s+function\s+([A-Za-z0-9_]+)/g, "function $1")
+    .replace(/export\s+default\s+([A-Za-z0-9_]+);?/g, "")
+    .replace(/export\s+/g, "");
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>CodeX Live Preview</title>
+      <script src="https://cdn.tailwindcss.com"></script>
+      <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+      <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+      <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+      <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #ffffff; color: #111827; }
+        * { box-sizing: border-box; }
+        ${customCss}
+      </style>
+    </head>
+    <body>
+      <div id="root"></div>
+      <script type="text/babel">
+        try {
+          ${cleanedReactCode}
+
+          const ComponentToRender = typeof App !== 'undefined' ? App : (typeof main !== 'undefined' ? main : null);
+          if (ComponentToRender) {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<ComponentToRender />);
+          } else {
+            document.getElementById('root').innerHTML = \`${mainFile.replace(/`/g, "\\`").replace(/\${/g, "\\${")}\`;
+          }
+        } catch (err) {
+          document.getElementById('root').innerHTML = '<div style="color:#ef4444;background:#fef2f2;padding:24px;border:1px solid #fecaca;border-radius:12px;margin:20px;font-family:monospace;"><strong>Ishga tushirishda xatolik:</strong><br/><pre style="white-space:pre-wrap;margin-top:10px;">' + err.message + '</pre></div>';
+        }
+      </script>
+    </body>
+    </html>
+  `;
+}
+
+// Simple markdown-to-HTML renderer for inline formatting
+function renderMarkdown(text) {
+  if (!text) return "";
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>")
+    .replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>")
+    .replace(/&lt;em&gt;/g, "<em>").replace(/&lt;\/em&gt;/g, "</em>")
+    .replace(/&lt;strong&gt;/g, "<strong>").replace(/&lt;\/strong&gt;/g, "</strong>")
+    .replace(/&lt;br\s*\/?\s*&gt;/g, "<br>")
+    .replace(/^#### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+    .replace(/^[\-\*] (.+)$/gm, '<li class="md-li">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="md-li-ordered">$1</li>')
+    .replace(/^---$/gm, '<hr class="md-hr">')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>')
+    .replace(/\n\n/g, '<div class="md-break"></div>')
+    .replace(/\n/g, '<br>');
+
+  return html;
+}
+
 export default function Chat() {
   const [models, setModels] = useState([]);
   const [chats, setChats] = useState(getStoredChats);
@@ -99,7 +194,11 @@ export default function Chat() {
   const [activeSkillId, setActiveSkillId] = useState(() => activeChat?.skillId || "default");
   const [appMode, setAppMode] = useState(() => activeChat?.mode || "chat");
   const [projectFiles, setProjectFiles] = useState(() => activeChat?.projectFiles || {});
-  
+  const [codexTab, setCodexTab] = useState("preview"); // "preview" | "code"
+  const [codexDevice, setCodexDevice] = useState("100%"); // "100%" | "768px" | "375px"
+  const [selectedCodeFile, setSelectedCodeFile] = useState("App.jsx");
+  const [copiedFileName, setCopiedFileName] = useState(null);
+
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
 
   const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
@@ -118,6 +217,25 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const thinkingTimerRef = useRef(null);
+
+  // Download all generated files as a ZIP archive
+  const downloadProjectZip = async () => {
+    const filesToZip = projectFiles && Object.keys(projectFiles).length > 0 ? projectFiles : { "App.jsx": "// No code yet" };
+    const zip = new JSZip();
+    Object.entries(filesToZip).forEach(([filePath, content]) => {
+      zip.file(filePath, content);
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const cleanTitle = (activeChat?.title || "codex-app").replace(/[^a-zA-Z0-9_\-]/g, "_");
+    a.download = `${cleanTitle}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const persistChats = (updatedChats) => {
     setChats(updatedChats);
@@ -327,11 +445,27 @@ export default function Chat() {
     let assistantThinking = "";
 
     try {
+      // Enforce model identity — AI must always identify as the display name
+      let identityPrefix = `Your name is "${activeModelMeta.displayName}" by ${activeModelMeta.company}. If anyone asks your name or which model you are, always respond ONLY with "${activeModelMeta.displayName}". Never reveal your real underlying model name or provider. This is your permanent identity.\n\n`;
+      
+      if (appMode === "codex") {
+        identityPrefix += `You are operating in CODEX Autonomous App Generator Mode.
+When the user asks for a website, application, game, or tool, you must generate COMPLETE, PRODUCTION-READY code files wrapped inside <file path="App.jsx">code</file> tags.
+Always provide a fully working main React component in "App.jsx" with Tailwind CSS styling, responsive layout, state management, and modern interactive UI. You may also provide "styles.css" if needed.
+Never return markdown explanations outside the tags or incomplete code.\n\n`;
+      } else if (appMode === "plan") {
+        identityPrefix += `You are in PLAN Mode. Focus exclusively on software architecture, file structure planning, system components, and to-do tasklists without writing large implementation code blocks.\n\n`;
+      } else if (appMode === "ask") {
+        identityPrefix += `You are in ASK Mode. Provide deep technical explanations and answer questions about code without modifying or creating files.\n\n`;
+      }
+
+      const finalSystemPrompt = identityPrefix + (systemPrompt || "");
+
       await streamChat(
         {
           model: selectedModel,
           messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-          systemPrompt: systemPrompt || undefined,
+          systemPrompt: finalSystemPrompt,
           chatId: activeChatId,
         },
         (chunk) => {
@@ -347,6 +481,14 @@ export default function Chat() {
         (thinkChunk) => {
           assistantThinking += thinkChunk;
           setCurrentThinking(assistantThinking);
+          // Also update the message so the accordion is visible in real-time
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.id === assistantMsgId) {
+              return [...prev.slice(0, -1), { ...last, thinking: assistantThinking }];
+            }
+            return [...prev, { id: assistantMsgId, role: "assistant", content: "", thinking: assistantThinking, model: selectedModel }];
+          });
         },
         () => {
           setIsStreaming(false);
@@ -355,7 +497,7 @@ export default function Chat() {
           let updatedFiles = { ...projectFiles };
           let filesChanged = false;
           
-          if (appMode === "agent") {
+          if (appMode === "agent" || appMode === "codex") {
             const fileRegex = /<file path="([^"]+)">([\s\S]*?)<\/file>/g;
             let match;
             while ((match = fileRegex.exec(assistantContent)) !== null) {
@@ -364,11 +506,23 @@ export default function Chat() {
               updatedFiles[filePath] = fileContent;
               filesChanged = true;
             }
+
+            // Fallback: If in CodeX mode and no <file> tags were used, check for markdown code blocks
+            if (!filesChanged && appMode === "codex") {
+              const codeBlockMatch = assistantContent.match(/```(?:jsx|javascript|js|tsx|html)?\s*([\s\S]*?)```/);
+              if (codeBlockMatch && codeBlockMatch[1].trim().length > 30) {
+                updatedFiles["App.jsx"] = codeBlockMatch[1].trim();
+                filesChanged = true;
+              }
+            }
           }
 
           if (filesChanged) {
             setProjectFiles(updatedFiles);
+            const firstKey = Object.keys(updatedFiles)[0];
+            if (firstKey) setSelectedCodeFile(firstKey);
           }
+          // -----------------------
           // -----------------------
 
           const finalMessages = [
@@ -593,8 +747,9 @@ export default function Chat() {
         </div>
       </aside>
 
-      {/* Main Chat Area */}
-      <main className="chat-main">
+      {/* Main Chat Content & Split Screen */}
+      <div className={`chat-layout-content ${appMode === "codex" ? "codex-active" : ""}`}>
+        <main className="chat-main">
         {/* Top Navbar */}
         <header className="chat-navbar">
           <div className="navbar-left">
@@ -765,9 +920,11 @@ export default function Chat() {
                           );
                         }
                         return (
-                          <div key={idx} className="text-prose">
-                            {part}
-                          </div>
+                          <div
+                            key={idx}
+                            className="text-prose"
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
+                          />
                         );
                       })}
                     </div>
@@ -895,6 +1052,197 @@ export default function Chat() {
           </div>
         </div>
       </main>
+
+      {/* CodeX Side Panel (Preview / Code & Download) */}
+      {appMode === "codex" && (
+        <aside className="codex-side-panel">
+          <div className="codex-panel-header">
+            <div className="codex-tabs-group">
+              <button
+                type="button"
+                className={`codex-tab-btn ${codexTab === "preview" ? "active" : ""}`}
+                onClick={() => setCodexTab("preview")}
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                Preview
+              </button>
+              <button
+                type="button"
+                className={`codex-tab-btn ${codexTab === "code" ? "active" : ""}`}
+                onClick={() => setCodexTab("code")}
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="16 18 22 12 16 6" />
+                  <polyline points="8 6 2 12 8 18" />
+                </svg>
+                Code
+              </button>
+            </div>
+
+            <div className="codex-header-actions">
+              {codexTab === "preview" && (
+                <div className="codex-preview-device-toggle">
+                  <button
+                    type="button"
+                    className={`device-toggle-btn ${codexDevice === "100%" ? "active" : ""}`}
+                    onClick={() => setCodexDevice("100%")}
+                    title="Desktop ko'rinishi"
+                  >
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="2" y="3" width="20" height="14" rx="2" />
+                      <line x1="8" y1="21" x2="16" y2="21" />
+                      <line x1="12" y1="17" x2="12" y2="21" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`device-toggle-btn ${codexDevice === "768px" ? "active" : ""}`}
+                    onClick={() => setCodexDevice("768px")}
+                    title="Planshet ko'rinishi"
+                  >
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="4" y="2" width="16" height="20" rx="2" />
+                      <line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="3" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`device-toggle-btn ${codexDevice === "375px" ? "active" : ""}`}
+                    onClick={() => setCodexDevice("375px")}
+                    title="Telefon ko'rinishi"
+                  >
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="5" y="2" width="14" height="20" rx="2" />
+                      <line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="3" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="codex-zip-btn"
+                onClick={downloadProjectZip}
+                title="Loyiha fayllarini ZIP arxiv sifatida yuklab olish"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                ZIP Yuklab olish
+              </button>
+            </div>
+          </div>
+
+          <div className="codex-panel-body">
+            {codexTab === "preview" ? (
+              <div className="codex-preview-view">
+                <div className="codex-iframe-wrapper" style={{ width: codexDevice }}>
+                  <iframe
+                    srcDoc={buildSandboxHtml(projectFiles)}
+                    title="CodeX Live Sandbox"
+                    className="codex-preview-iframe"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="codex-code-explorer">
+                {/* File Sidebar */}
+                <div className="codex-file-sidebar">
+                  <div className="codex-file-sidebar-title">Loyiha fayllari ({Object.keys(projectFiles).length || 1})</div>
+                  <div className="codex-file-list">
+                    {Object.keys(projectFiles).length === 0 ? (
+                      <button
+                        type="button"
+                        className="codex-file-item active"
+                        onClick={() => setSelectedCodeFile("App.jsx")}
+                      >
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <span>App.jsx</span>
+                      </button>
+                    ) : (
+                      Object.keys(projectFiles).map((fileKey) => (
+                        <button
+                          key={fileKey}
+                          type="button"
+                          className={`codex-file-item ${(selectedCodeFile || Object.keys(projectFiles)[0]) === fileKey ? "active" : ""}`}
+                          onClick={() => setSelectedCodeFile(fileKey)}
+                        >
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                          </svg>
+                          <span>{fileKey}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Code Editor Content View */}
+                <div className="codex-code-editor-area">
+                  <div className="codex-editor-topbar">
+                    <div className="codex-current-filename">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      <span>{selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx"}</span>
+                    </div>
+                    <div className="codex-editor-actions">
+                      <button
+                        type="button"
+                        className="codex-copy-file-btn"
+                        onClick={() => {
+                          const activeKey = selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx";
+                          const contentToCopy = projectFiles[activeKey] || "// Fayl kodi mavjud emas";
+                          navigator.clipboard.writeText(contentToCopy);
+                          setCopiedFileName(activeKey);
+                          setTimeout(() => setCopiedFileName(null), 2000);
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        {copiedFileName === (selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx") ? "Nusxalandi" : "Nusxalash"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <pre className="codex-code-content-pre">
+                    <code>{projectFiles[selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx"] || "// Loyiha fayli hali generatsiya qilinmagan.\n// Chapdagi chat orqali dastur yaratish bo'yicha so'rov yuboring."}</code>
+                  </pre>
+
+                  <div className="codex-code-footer-bar">
+                    <button
+                      type="button"
+                      className="codex-download-all-zip-btn"
+                      onClick={downloadProjectZip}
+                    >
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      Barcha kodlarni ZIP qilib yuklab olish
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+    </div>
 
       {/* Model Selection Modal */}
       {isModelModalOpen && (
