@@ -705,30 +705,55 @@ async function handleMcpJsonRpc(body, user) {
         }
 
         try {
-          // Execute full 3-phase Plan -> Generate -> Validate pipeline
-          const result = await executeCodexPipeline(prompt, OR_KEY);
-
           const newChatId = `chat-${Date.now()}`;
-          const chatObj = {
-            id: newChatId,
-            user_id: user.id,
-            title: result.plan?.title || prompt.slice(0, 30),
-            model: "CodeX Auto",
-            mode: "codex",
-            project_files: result.projectFiles,
-            messages: [
-              { id: `user-1`, role: "user", content: prompt },
-              { id: `assistant-1`, role: "assistant", content: `**${result.plan?.title || "Loyiha"} muvaffaqiyatli yaratildi!**\n\n${result.plan?.summary || ""}` }
-            ]
-          };
-          await saveUserChat(chatObj);
-
           const previewUrl = `https://avg-ai-creator.site/preview/${newChatId}`;
           const zipDownloadToken = generateDownloadToken(newChatId, user.id);
           const zipDownloadUrl = `https://avg-ai-creator.site/api/projects/${newChatId}/zip?token=${zipDownloadToken}`;
-          const fileCount = Object.keys(result.projectFiles).length;
-          const filesSummary = Object.keys(result.projectFiles).map((p) => `- \`${p}\``).join("\n");
+          
+          // 1. Dastlabki "Loading" holatini saqlaymiz
+          const initialChatObj = {
+            id: newChatId,
+            user_id: user.id,
+            title: prompt.slice(0, 30) + "...",
+            model: "CodeX Auto",
+            mode: "codex",
+            project_files: {
+              "App.jsx": "// Dastur kodlari generatsiya qilinmoqda (Taxminan 30-90 soniya)...\n// Iltimos, birozdan so'ng sahifani yangilang yoki jonli ko'rish havolasini oching.",
+              "index.html": "<!DOCTYPE html><html><body style='background:#111;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;'><h2>Yaratilmoqda... Qayta yuklang (F5)</h2></body></html>"
+            },
+            messages: [
+              { id: `user-1`, role: "user", content: prompt },
+              { id: `assistant-1`, role: "assistant", content: `Loyiha yaratilmoqda... Jarayon orqa fonda davom etyapti.` }
+            ]
+          };
+          await saveUserChat(initialChatObj);
 
+          // 2. Orqa fonda generatsiyani ishga tushiramiz (await qilinmaydi)
+          executeCodexPipeline(prompt, OR_KEY).then(async (result) => {
+            const finalChatObj = {
+              ...initialChatObj,
+              title: result.plan?.title || prompt.slice(0, 30),
+              project_files: result.projectFiles,
+              messages: [
+                { id: `user-1`, role: "user", content: prompt },
+                { id: `assistant-1`, role: "assistant", content: `**${result.plan?.title || "Loyiha"} muvaffaqiyatli yaratildi!**\n\n${result.plan?.summary || ""}` }
+              ]
+            };
+            await saveUserChat(finalChatObj);
+          }).catch(async (e) => {
+            console.error("Background CodeX Error:", e);
+            const errorChatObj = {
+              ...initialChatObj,
+              project_files: { "App.jsx": `// Xatolik yuz berdi: ${e.message}` },
+              messages: [
+                { id: `user-1`, role: "user", content: prompt },
+                { id: `assistant-1`, role: "assistant", content: `Xatolik yuz berdi: ${e.message}` }
+              ]
+            };
+            await saveUserChat(errorChatObj);
+          });
+
+          // 3. Darhol MCP mijozga javob qaytaramiz (Timeout bo'lmasligi uchun)
           return {
             jsonrpc: "2.0",
             id,
@@ -736,7 +761,7 @@ async function handleMcpJsonRpc(body, user) {
               content: [
                 {
                   type: "text",
-                  text: `Dastur muvaffaqiyatli yaratildi va barcha fayllar sintaksisi tekshirildi! 🎉\n\n**Loyiha:** ${result.plan?.title || "CodeX App"}\n**Stack:** ${result.plan?.stack || "Custom"}\n**Fayllar soni:** ${fileCount} ta\n\n${filesSummary}\n\n🔗 **Jonli ko'rish (Live Preview):** ${previewUrl}\n📦 **To'liq ZIP yuklab olish (Download Project):** ${zipDownloadUrl}`,
+                  text: `Loyiha yaratish orqa fonda boshlandi (taxminan 30-90 soniya davom etadi). Hozircha quyidagi havolaga o'tib turishingiz mumkin:\n\n🔗 **Jonli ko'rish (Live Preview):** ${previewUrl}\n📦 **To'liq ZIP (tayyor bo'lgach):** ${zipDownloadUrl}`,
                 },
               ],
             },
@@ -745,7 +770,7 @@ async function handleMcpJsonRpc(body, user) {
           return {
             jsonrpc: "2.0",
             id,
-            error: { code: -32000, message: "CodeX generation failed: " + e.message },
+            error: { code: -32000, message: "CodeX ishga tushirishda xatolik: " + e.message },
           };
         }
       }
@@ -985,7 +1010,16 @@ app.get("/authorize", (req, res) => {
   if (response_type !== "code") {
     return res.status(400).json({ error: "unsupported_response_type" });
   }
-  if (client_id !== MCP_CLIENT_ID) {
+  if (!client_id) {
+    console.log("[OAUTH] Missing client_id in /authorize request");
+    return res.status(400).json({ error: "invalid_request", error_description: "Missing client_id parameter." });
+  }
+
+  const cleanClientId = String(client_id).trim();
+  const allowedClients = [MCP_CLIENT_ID, "oryxgen-ai-mcp-client", "oryxgen-cursor-client", "oryxgen-vscode-client"];
+  
+  if (!allowedClients.includes(cleanClientId)) {
+    console.log(`[OAUTH] Unknown client_id rejected: "${cleanClientId}"`);
     return res.status(400).json({ error: "unauthorized_client", error_description: "Unknown client_id." });
   }
   if (!redirect_uri || !isAllowedRedirectUri(redirect_uri)) {

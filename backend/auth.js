@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { findOrCreateUser, saveOtp, verifyOtp } from "./db.js";
+import { findOrCreateUser, saveOtp, verifyOtp, findUserById, updateUserSystemPrompt } from "./db.js";
 
 const JWT_SECRET = (process.env.JWT_SECRET || "oryxgen-ultra-secret-key-2026").trim();
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || "").trim();
@@ -358,10 +358,25 @@ export function setupAuthRoutes(app) {
   });
 
   // 5. Current user profile
-  app.get("/api/auth/me", authMiddleware, (req, res) => {
+  app.get("/api/auth/me", authMiddleware, async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ error: "Avtorizatsiyadan o'tilmagan" });
     }
-    res.json({ ok: true, user: req.user });
+    const fullUser = await findUserById(req.user.id);
+    res.json({ ok: true, user: fullUser || req.user });
+  });
+
+  // 6. User System Prompt
+  app.get("/api/user/system-prompt", authMiddleware, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    const fullUser = await findUserById(req.user.id);
+    res.json({ systemPrompt: fullUser?.default_system_prompt || "" });
+  });
+
+  app.put("/api/user/system-prompt", authMiddleware, async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    const { systemPrompt } = req.body || {};
+    await updateUserSystemPrompt(req.user.id, systemPrompt);
+    res.json({ ok: true });
   });
 }

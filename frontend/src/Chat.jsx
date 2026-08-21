@@ -12,6 +12,8 @@ import {
   streamChat,
   streamCodexGenerate,
   getAuthToken,
+  getUserSystemPrompt,
+  updateUserSystemPrompt,
 } from "./api";
 import CodeXWorkspace from "./CodeXWorkspace";
 import AuthModal from "./AuthModal";
@@ -234,6 +236,17 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const thinkingTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (currentUser) {
+      getUserSystemPrompt().then(prompt => {
+        if (prompt && (!activeChat || activeChat.id === "chat-1" || activeChat.messages.length === 0)) {
+          setSystemPrompt(prompt);
+          setActiveSkillId("custom");
+        }
+      });
+    }
+  }, [currentUser?.id]);
 
   const persistChats = (updatedChats) => {
     setChats(updatedChats);
@@ -931,7 +944,10 @@ export default function Chat() {
               </div>
             ) : (
               <div className="messages-flow">
-                {messages.map((m) => (
+                {messages.map((m, idx) => {
+                  const isLastStreaming = isStreaming && idx === messages.length - 1;
+                  const isExpanded = thinkingExpanded || isLastStreaming;
+                  return (
                   <div key={m.id} className={`message-row ${m.role}`}>
                     <div className="message-avatar">
                       {m.role === "user" ? (
@@ -955,20 +971,20 @@ export default function Chat() {
                             onClick={() => setThinkingExpanded(!thinkingExpanded)}
                           >
                             <div className="thinking-status-indicator">
-                              <span className="pulse-dot" />
-                              <span>Mantiqiy tahlil jarayoni</span>
+                              <span className={`pulse-dot ${isLastStreaming ? "active" : ""}`} />
+                              <span>Mantiqiy tahlil jarayoni {isLastStreaming && `(${thinkingTime}s)`}</span>
                             </div>
                             <svg
                               viewBox="0 0 24 24"
                               width="14"
                               height="14"
                               fill="currentColor"
-                              style={{ transform: thinkingExpanded ? "rotate(180deg)" : "none" }}
+                              style={{ transform: isExpanded ? "rotate(180deg)" : "none" }}
                             >
                               <path d="M7 10l5 5 5-5z" />
                             </svg>
                           </button>
-                          {thinkingExpanded && (
+                          {isExpanded && (
                             <div className="thinking-body">
                               <pre>{m.thinking}</pre>
                             </div>
@@ -986,6 +1002,9 @@ export default function Chat() {
                             <div className="codex-progress-filetree">
                               <div className="codex-progress-filetree-title">
                                 {codexPlan.title} · {codexPlan.stack}
+                                {codexPlan.isFallbackTemplate && (
+                                  <span style={{ color: "#ef4444", marginLeft: "10px", fontSize: "11px", fontWeight: "bold" }}>⚠️ Standart Qolip</span>
+                                )}
                               </div>
                               {(codexPlan.files || []).map((f) => {
                                 const status = codexFileStatus[f.path] || "pending";
@@ -1048,29 +1067,10 @@ export default function Chat() {
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
-                {/* Real-time streaming thinking placeholder */}
-                {isStreaming && currentThinking && !messages.find((m) => m.thinking) && (
-                  <div className="message-row assistant streaming">
-                    <div className="message-avatar">
-                      <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
-                    </div>
-                    <div className="message-bubble-wrapper">
-                      <div className="thinking-accordion">
-                        <div className="thinking-toggle-header">
-                          <div className="thinking-status-indicator">
-                            <span className="pulse-dot active" />
-                            <span>Fikrlanmoqda ({thinkingTime}s)...</span>
-                          </div>
-                        </div>
-                        <div className="thinking-body">
-                          <pre>{currentThinking}</pre>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Real-time streaming thinking placeholder removed because main accordion handles it now */}
 
                 <div ref={messagesEndRef} />
               </div>
@@ -1313,7 +1313,15 @@ export default function Chat() {
               <button
                 type="button"
                 className="btn-apply-skill"
-                onClick={() => setIsSkillModalOpen(false)}
+                onClick={async () => {
+                  setIsSkillModalOpen(false);
+                  if (currentUser) {
+                    try {
+                      await updateUserSystemPrompt(systemPrompt);
+                      setCurrentUser({ ...currentUser, default_system_prompt: systemPrompt });
+                    } catch(e) {}
+                  }
+                }}
               >
                 Ko'rsatmani saqlash & Qo'llash
               </button>

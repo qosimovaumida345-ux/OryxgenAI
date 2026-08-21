@@ -115,6 +115,63 @@ def status():
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
 `
+  },
+  {
+    id: "nextjs-tailwind-app",
+    keywords: ["nextjs", "next", "ssr", "seo", "react server"],
+    projectType: "fullstack",
+    stack: "nextjs-react-tailwind",
+    summary: "Fullstack App (Next.js App Router)",
+    recommendedFiles: [
+      { path: "app/page.tsx", purpose: "Asosiy bosh sahifa" },
+      { path: "app/layout.tsx", purpose: "Global layout va HTML qobig'i" },
+      { path: "app/globals.css", purpose: "Global Tailwind stillari" },
+      { path: "package.json", purpose: "Next.js va Tailwind bog'liqliklari" },
+    ],
+    dependencies: ["next", "react", "react-dom", "tailwindcss"],
+    starterSnippet: ""
+  },
+  {
+    id: "vue-tailwind-app",
+    keywords: ["vue", "vuejs", "vue3", "vite vue"],
+    projectType: "frontend",
+    stack: "vue3-vite-tailwind",
+    summary: "Frontend App (Vue 3 + Vite)",
+    recommendedFiles: [
+      { path: "src/App.vue", purpose: "Asosiy Vue komponenti" },
+      { path: "src/main.js", purpose: "Vue app initsializatsiyasi" },
+      { path: "src/style.css", purpose: "Tailwind css" },
+      { path: "index.html", purpose: "Vite HTML entry" },
+    ],
+    dependencies: ["vue", "tailwindcss"],
+    starterSnippet: ""
+  },
+  {
+    id: "svelte-app",
+    keywords: ["svelte", "sveltekit"],
+    projectType: "frontend",
+    stack: "svelte-vite",
+    summary: "Frontend App (Svelte)",
+    recommendedFiles: [
+      { path: "src/App.svelte", purpose: "Asosiy Svelte komponenti" },
+      { path: "src/main.js", purpose: "Svelte initsializatsiyasi" },
+      { path: "index.html", purpose: "Vite HTML entry" },
+    ],
+    dependencies: ["svelte"],
+    starterSnippet: ""
+  },
+  {
+    id: "python-data-script",
+    keywords: ["script", "data", "pandas", "numpy", "scraper", "automation"],
+    projectType: "script",
+    stack: "python-script",
+    summary: "Python Automation/Data Script",
+    recommendedFiles: [
+      { path: "main.py", purpose: "Asosiy skript mantiqi" },
+      { path: "requirements.txt", purpose: "Kutubxonalar ro'yxati" },
+    ],
+    dependencies: ["requests", "pandas"],
+    starterSnippet: ""
   }
 ];
 

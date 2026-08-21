@@ -315,6 +315,29 @@ export async function deleteUserChat(chatId) {
   }
 }
 
+export async function getUserSystemPrompt() {
+  try {
+    const res = await fetch(`${API}/api/user/system-prompt`, { headers: authHeaders() });
+    if (!res.ok) return "";
+    const data = await res.json();
+    return data.systemPrompt || "";
+  } catch {
+    return "";
+  }
+}
+
+export async function updateUserSystemPrompt(systemPrompt) {
+  try {
+    await fetch(`${API}/api/user/system-prompt`, {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ systemPrompt }),
+    });
+  } catch {
+    // ignore
+  }
+}
+
 // MCP OAuth — called from the /mcp-connect page once the user is logged in,
 // to mint the authorization code and get the redirect_uri back to the MCP
 // client that started the flow.

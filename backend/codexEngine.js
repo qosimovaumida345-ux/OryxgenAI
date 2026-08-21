@@ -83,33 +83,39 @@ Every local import between files must be planned and consistent.`;
     { role: "user", content: `User Prompt: ${userPrompt}\nCreate the project plan JSON:` },
   ];
 
-  const { content } = await callOpenRouter(messages, openRouterKey, 0.1);
-  
-  // Extract JSON from response
-  let jsonStr = content.trim();
-  const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (jsonMatch) {
-    jsonStr = jsonMatch[1].trim();
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { content } = await callOpenRouter(messages, openRouterKey, 0.1);
+      
+      let jsonStr = content.trim();
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+      }
+
+      const plan = JSON.parse(jsonStr);
+      if (!plan.files || !Array.isArray(plan.files) || plan.files.length === 0) {
+        throw new Error("Files list is empty");
+      }
+      return plan;
+    } catch (err) {
+      lastErr = err;
+      // continue to retry
+    }
   }
 
-  try {
-    const plan = JSON.parse(jsonStr);
-    if (!plan.files || !Array.isArray(plan.files) || plan.files.length === 0) {
-      throw new Error("Files list is empty");
-    }
-    return plan;
-  } catch (err) {
-    // Fallback structured plan based on matched template
-    return {
-      projectType: matchedTemplate.projectType,
-      stack: matchedTemplate.stack,
-      title: userPrompt.slice(0, 30) + "...",
-      summary: `${matchedTemplate.summary} loyihasi tayyorlanmoqda.`,
-      dependencies: matchedTemplate.dependencies,
-      runCommand: matchedTemplate.projectType === "frontend" ? "npm run dev" : matchedTemplate.projectType === "bot" ? "python bot.py" : "npm start",
-      files: matchedTemplate.recommendedFiles,
-    };
-  }
+  // Fallback structured plan based on matched template if all attempts fail
+  return {
+    isFallbackTemplate: true,
+    projectType: matchedTemplate.projectType,
+    stack: matchedTemplate.stack,
+    title: userPrompt.slice(0, 30) + "...",
+    summary: `${matchedTemplate.summary} loyihasi tayyorlanmoqda (Avtomatik qolip orqali).`,
+    dependencies: matchedTemplate.dependencies,
+    runCommand: matchedTemplate.projectType === "frontend" ? "npm run dev" : matchedTemplate.projectType === "bot" ? "python bot.py" : "npm start",
+    files: matchedTemplate.recommendedFiles,
+  };
 }
 
 // -------------------------------------------------------------

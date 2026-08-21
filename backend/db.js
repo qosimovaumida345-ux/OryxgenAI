@@ -38,6 +38,7 @@ export async function initDb() {
         name VARCHAR(255),
         avatar VARCHAR(500),
         auth_provider VARCHAR(50) DEFAULT 'email',
+        default_system_prompt TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
 
@@ -63,6 +64,12 @@ export async function initDb() {
       );
 
       -- Try adding new columns if they don't exist (for existing DBs)
+      BEGIN
+        ALTER TABLE users ADD COLUMN default_system_prompt TEXT;
+      EXCEPTION
+        WHEN duplicate_column THEN null;
+      END;
+
       BEGIN
         ALTER TABLE chats ADD COLUMN mode VARCHAR(50) DEFAULT 'chat';
         ALTER TABLE chats ADD COLUMN system_prompt TEXT;
@@ -120,8 +127,8 @@ export async function verifyOtp(target, code) {
       if (res.rows.length > 0) {
         const row = res.rows[0];
         const expiryTime = new Date(row.expires_at).getTime();
-        // Allow valid or small clock drift buffer
-        if (isNaN(expiryTime) || expiryTime > Date.now() - 120000) {
+        // Allow a large buffer (2 hours) to account for DB vs Node timezone differences
+        if (isNaN(expiryTime) || expiryTime > Date.now() - 2 * 60 * 60 * 1000) {
           await pool.query("DELETE FROM otps WHERE LOWER(TRIM(target)) = $1", [cleanTarget]);
           inMemory.otps.delete(cleanTarget);
           return true;
@@ -135,7 +142,7 @@ export async function verifyOtp(target, code) {
   const found = inMemory.otps.get(cleanTarget);
   if (found && String(found.code).trim() === cleanCode) {
     const expiryTime = new Date(found.expiresAt).getTime();
-    if (isNaN(expiryTime) || expiryTime > Date.now() - 120000) {
+    if (isNaN(expiryTime) || expiryTime > Date.now() - 2 * 60 * 60 * 1000) {
       inMemory.otps.delete(cleanTarget);
       return true;
     }
@@ -172,6 +179,7 @@ export async function findOrCreateUser({ email, phone, name, avatar, authProvide
       name: name || (email ? email.split("@")[0] : phone),
       avatar: avatar || "",
       auth_provider: authProvider || "email",
+      default_system_prompt: null,
       created_at: new Date(),
     };
     inMemory.users.push(user);
@@ -189,6 +197,21 @@ export async function findUserById(id) {
     }
   }
   return inMemory.users.find((u) => u.id === id) || null;
+}
+
+export async function updateUserSystemPrompt(id, prompt) {
+  if (pool) {
+    try {
+      await pool.query("UPDATE users SET default_system_prompt = $1 WHERE id = $2", [prompt || null, id]);
+      return;
+    } catch (err) {
+      console.warn("DB user update error, checking in-memory:", err.message);
+    }
+  }
+  const idx = inMemory.users.findIndex((u) => u.id === id);
+  if (idx >= 0) {
+    inMemory.users[idx].default_system_prompt = prompt || null;
+  }
 }
 
 export async function getUserChats(userId) {
