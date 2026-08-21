@@ -537,16 +537,27 @@ const MCP_PROMPTS = [
 ];
 
 // MCP JSON-RPC Handler
+// MCP protocol versions this server understands, most recent first.
+// initialize negotiates against what the CLIENT asks for (params.protocolVersion)
+// instead of always returning the oldest one — some MCP clients (Claude.ai's
+// connector among them) treat a server that ignores their requested version
+// as non-compliant and refuse to proceed past initialize.
+const SUPPORTED_MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+
 async function handleMcpJsonRpc(body, user) {
   const { id, method, params } = body || {};
 
   switch (method) {
-    case "initialize":
+    case "initialize": {
+      const requested = params?.protocolVersion;
+      const negotiatedVersion = SUPPORTED_MCP_PROTOCOL_VERSIONS.includes(requested)
+        ? requested
+        : SUPPORTED_MCP_PROTOCOL_VERSIONS[0];
       return {
         jsonrpc: "2.0",
         id,
         result: {
-          protocolVersion: "2024-11-05",
+          protocolVersion: negotiatedVersion,
           capabilities: {
             tools: { listChanged: true },
             prompts: { listChanged: true },
@@ -558,6 +569,7 @@ async function handleMcpJsonRpc(body, user) {
           },
         },
       };
+    }
 
     case "notifications/initialized":
       return null;
@@ -873,10 +885,12 @@ function setMcpCorsHeaders(res) {
 function requireMcpAuth(req, res, next) {
   const token = req.query.token || (req.headers.authorization && req.headers.authorization.split(" ")[1]);
   if (!token) {
+    setWwwAuthenticateHeader(req, res);
     return res.status(401).json({ error: { code: -32000, message: "Authentication required. Please connect via https://avg-ai-creator.site" } });
   }
   const user = verifyToken(token);
   if (!user) {
+    setWwwAuthenticateHeader(req, res);
     return res.status(401).json({ error: { code: -32000, message: "Invalid or expired MCP token. Please log in again." } });
   }
   req.user = user;
@@ -912,12 +926,44 @@ function isAllowedRedirectUri(redirectUri) {
   }
 }
 
+function getRequestBase(req) {
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.get("host") || "avg-ai-creator.site";
+  return `${proto}://${host}`;
+}
+
+// RFC 9728 Protected Resource Metadata — tells an MCP client which
+// authorization server protects THIS resource (/api/mcp), and is what the
+// WWW-Authenticate header below points to. Without this, a spec-compliant
+// MCP client (like Claude.ai's connector) has no formal way to discover
+// oauth-authorization-server from a 401 on the resource itself — it may
+// only ever find it if it happens to probe the bare origin, which isn't
+// guaranteed. This was the missing piece: /.well-known/oauth-authorization-
+// server existed and was correct, but nothing on the 401 response told the
+// client where to look for it.
+app.get("/.well-known/oauth-protected-resource", (req, res) => {
+  const base = getRequestBase(req);
+  res.json({
+    resource: `${base}/api/mcp`,
+    authorization_servers: [base],
+  });
+});
+
+// Sets WWW-Authenticate on a 401 so an MCP client's standard OAuth discovery
+// (RFC 9728 → RFC 8414) can find /authorize and /token starting from the
+// resource itself, per the MCP authorization spec (2025-06-18+).
+function setWwwAuthenticateHeader(req, res) {
+  const base = getRequestBase(req);
+  res.setHeader(
+    "WWW-Authenticate",
+    `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`
+  );
+}
+
 // OAuth 2.0 Authorization Server Metadata (RFC 8414) — lets MCP clients
 // discover /authorize and /token without them being hardcoded on the client.
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
-  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host = req.headers["x-forwarded-host"] || req.get("host") || "avg-ai-creator.site";
-  const base = `${proto}://${host}`;
+  const base = getRequestBase(req);
   res.json({
     issuer: base,
     authorization_endpoint: `${base}/authorize`,
