@@ -6,9 +6,9 @@ const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL ||
 
 export const pool = connectionString
   ? new Pool({
-      connectionString,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-    })
+    connectionString,
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  })
   : null;
 
 // In-memory fallback if no PostgreSQL DB is connected yet
@@ -179,6 +179,18 @@ export async function findOrCreateUser({ email, phone, name, avatar, authProvide
   return user;
 }
 
+export async function findUserById(id) {
+  if (pool) {
+    try {
+      const res = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+      if (res.rows.length > 0) return res.rows[0];
+    } catch (err) {
+      console.warn("DB user lookup error, checking in-memory:", err.message);
+    }
+  }
+  return inMemory.users.find((u) => u.id === id) || null;
+}
+
 export async function getUserChats(userId) {
   if (pool && userId) {
     try {
@@ -217,13 +229,13 @@ export async function saveUserChat(chat) {
            project_files = EXCLUDED.project_files,
            updated_at = NOW()`,
         [
-          chat.id, 
-          chat.user_id, 
-          chat.title, 
-          chat.model, 
-          chat.mode || "chat", 
-          chat.system_prompt || null, 
-          chat.skill_id || "default", 
+          chat.id,
+          chat.user_id,
+          chat.title,
+          chat.model,
+          chat.mode || "chat",
+          chat.system_prompt || null,
+          chat.skill_id || "default",
           chat.project_files ? JSON.stringify(chat.project_files) : "{}"
         ]
       );

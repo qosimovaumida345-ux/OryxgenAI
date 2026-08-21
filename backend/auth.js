@@ -1,10 +1,11 @@
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { findOrCreateUser, saveOtp, verifyOtp } from "./db.js";
 
 const JWT_SECRET = (process.env.JWT_SECRET || "oryxgen-ultra-secret-key-2026").trim();
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || "").trim();
 const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
-const FRONTEND_URL = (process.env.FRONTEND_URL || "https://avg-ai-creator.site").trim().replace(/\/$/, "");
+export const FRONTEND_URL = (process.env.FRONTEND_URL || "https://avg-ai-creator.site").trim().replace(/\/$/, "");
 
 export function generateToken(user) {
   return jwt.sign(
@@ -20,6 +21,135 @@ export function verifyToken(token) {
   } catch {
     return null;
   }
+}
+
+// Short-lived, project-scoped signed token for the ZIP download link.
+// Handed out via /api/codex/generate and the codex_generate_app MCP tool,
+// where the consumer (a plain <a> link, or a *different* MCP client/AI
+// entirely) has no session/Authorization header to attach. Scoping the
+// token to one chatId means a leaked/forwarded link can't be replayed
+// against a different user's project, and the short expiry limits how
+// long a shared MCP result text stays a valid download link.
+export function generateDownloadToken(chatId, ownerId) {
+  return jwt.sign(
+    { purpose: "codex-zip-download", chatId, ownerId: ownerId || null },
+    JWT_SECRET,
+    { expiresIn: "10m" }
+  );
+}
+
+export function verifyDownloadToken(token, chatId) {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (payload.purpose !== "codex-zip-download") return null;
+    if (payload.chatId !== chatId) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// ── MCP OAuth 2.0 Authorization Code Grant (with PKCE) ──
+// Implements the /authorize + /token half of the flow so a real MCP client
+// (Claude.ai's "Connect custom connector", Claude Desktop, etc.) can log the
+// user in and obtain an access token automatically, instead of the user
+// having to paste a token by hand.
+//
+// Scope note: this issues codes/tokens ONLY for Oryxgen AI's own known MCP
+// client (fixed client_id below) — it does not implement RFC 7591 Dynamic
+// Client Registration, which would let arbitrary third-party MCP clients
+// self-register. Full DCR needs a persistent registered-clients store and is
+// a larger, separate piece of work; most MCP servers that only need to
+// support their own first-party connector skip it and pre-register a single
+// client the way this does.
+export const MCP_CLIENT_ID = "oryxgen-ai-mcp-client";
+
+// Authorization codes are short-lived (60s — just long enough for the client
+// to immediately redeem it at /token) AND single-use, per OAuth 2.0 spec
+// (RFC 6749 §4.1.2: "the authorization code MUST NOT be used more than
+// once"). Signing them as a JWT gives the 60s expiry for free, but a JWT
+// alone is stateless and can be verified successfully any number of times
+// before it expires — so redemption is additionally tracked in this
+// in-memory set, keyed by a hash of the code string. This mirrors the
+// project's existing in-memory-fallback pattern elsewhere in this file/db.js
+// rather than adding a new DB table for something that only needs to live
+// for ~60 seconds. redeemedCodes is pruned periodically so it never grows
+// past whatever arrived in the last couple of minutes.
+const redeemedCodes = new Set();
+setInterval(() => redeemedCodes.clear(), 5 * 60 * 1000).unref?.();
+
+function hashCode(code) {
+  return crypto.createHash("sha256").update(code).digest("hex");
+}
+
+export function generateAuthorizationCode({ userId, redirectUri, codeChallenge, codeChallengeMethod, state }) {
+  return jwt.sign(
+    {
+      purpose: "mcp-auth-code",
+      userId,
+      redirectUri,
+      codeChallenge,
+      codeChallengeMethod: codeChallengeMethod || "S256",
+      state: state || null,
+    },
+    JWT_SECRET,
+    { expiresIn: "60s" }
+  );
+}
+
+// Verifies the code and, if a codeVerifier is supplied, checks it against the
+// PKCE challenge that was bound to the code at /authorize time (RFC 7636
+// S256: challenge must equal base64url(sha256(verifier))). Also enforces
+// single-use: a code that verifies successfully is immediately marked
+// redeemed, so a second /token call with the same code — whether a retry,
+// a race, or a leaked/replayed code — is rejected even though the JWT
+// itself hasn't expired yet.
+export function verifyAuthorizationCode(code, { redirectUri, codeVerifier } = {}) {
+  const codeHash = hashCode(code);
+  if (redeemedCodes.has(codeHash)) {
+    return { error: "invalid_grant", detail: "Authorization code has already been used." };
+  }
+
+  let payload;
+  try {
+    payload = jwt.verify(code, JWT_SECRET);
+  } catch {
+    return { error: "invalid_grant", detail: "Authorization code is invalid or expired." };
+  }
+  if (payload.purpose !== "mcp-auth-code") {
+    return { error: "invalid_grant", detail: "Not an authorization code." };
+  }
+  if (redirectUri && payload.redirectUri !== redirectUri) {
+    return { error: "invalid_grant", detail: "redirect_uri does not match the one used to request this code." };
+  }
+  if (payload.codeChallenge) {
+    if (!codeVerifier) {
+      return { error: "invalid_request", detail: "code_verifier is required (PKCE)." };
+    }
+    // base64url digest encoding needs Node 15+; fall back to manual conversion
+    // from base64 for older runtimes rather than assuming it's supported.
+    let derived;
+    try {
+      derived = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+    } catch {
+      derived = crypto
+        .createHash("sha256")
+        .update(codeVerifier)
+        .digest("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    }
+    if (derived !== payload.codeChallenge) {
+      return { error: "invalid_grant", detail: "code_verifier does not match code_challenge." };
+    }
+  }
+  // Mark redeemed only now, at the point every check has actually passed —
+  // not on entry — so a downstream failure after this call (e.g. the user
+  // was deleted between /authorize and /token) doesn't burn the code for a
+  // reason unrelated to its one legitimate use.
+  redeemedCodes.add(codeHash);
+  return { payload };
 }
 
 export function authMiddleware(req, res, next) {

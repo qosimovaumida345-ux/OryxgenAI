@@ -125,6 +125,87 @@ export async function streamChat(arg1, arg2, arg3, arg4, arg5) {
   }
 }
 
+// CodeX Autonomous Pipeline Streaming (Plan -> Generate -> Validate)
+// Consumes the SSE events emitted by backend/codexEngine.js via /api/codex/generate
+export async function streamCodexGenerate({ prompt, chatId }, callbacks = {}) {
+  const {
+    onPhase = () => { },
+    onPlan = () => { },
+    onFileStart = () => { },
+    onFileValidate = () => { },
+    onFileDone = () => { },
+    onDone = () => { },
+    onError = () => { },
+  } = callbacks;
+
+  try {
+    const res = await fetch(`${API}/api/codex/generate`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ prompt, chatId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Server band yoki xatolik yuz berdi" }));
+      throw new Error(err.error || "CodeX so'rovi bajarilmadi");
+    }
+    if (!res.body) {
+      throw new Error("Server javob oqimini qaytarmadi.");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        let event;
+        try {
+          event = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+
+        switch (event.type) {
+          case "phase":
+            onPhase(event);
+            break;
+          case "plan":
+            onPlan(event.plan);
+            break;
+          case "file_start":
+            onFileStart(event);
+            break;
+          case "file_validate":
+            onFileValidate(event);
+            break;
+          case "file_done":
+            onFileDone(event);
+            break;
+          case "done":
+            onDone(event);
+            break;
+          case "error":
+            onError(event.message || "CodeX generatsiyasida xatolik yuz berdi.");
+            break;
+          default:
+            break;
+        }
+      }
+    }
+  } catch (err) {
+    onError(err.message || "CodeX so'rovi bajarilmadi");
+  }
+}
+
 // Image URL builder
 export function imageUrl(prompt, model = "flux", width = 1024, height = 1024, seed = null) {
   const params = new URLSearchParams({
@@ -232,4 +313,18 @@ export async function deleteUserChat(chatId) {
   } catch {
     // ignore
   }
+}
+
+// MCP OAuth — called from the /mcp-connect page once the user is logged in,
+// to mint the authorization code and get the redirect_uri back to the MCP
+// client that started the flow.
+export async function completeMcpAuthorize({ redirectUri, codeChallenge, codeChallengeMethod, state }) {
+  const res = await fetch(`${API}/api/mcp/complete-authorize`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ redirectUri, codeChallenge, codeChallengeMethod, state }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description || data.error || "MCP ulanishni yakunlab bo'lmadi.");
+  return data;
 }

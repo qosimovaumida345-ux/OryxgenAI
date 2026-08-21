@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import JSZip from "jszip";
 import {
   checkBackendHealth,
   clearAuthSession,
@@ -11,8 +10,10 @@ import {
   getStoredUser,
   saveUserChat,
   streamChat,
+  streamCodexGenerate,
   getAuthToken,
 } from "./api";
+import CodeXWorkspace from "./CodeXWorkspace";
 import AuthModal from "./AuthModal";
 import LoadingScreen from "./LoadingScreen";
 import { CompanyLogo } from "./Logos";
@@ -31,11 +32,11 @@ function getStoredChats() {
         return parsed;
       }
     }
-  } catch {}
-  return [{ 
-    id: "chat-1", 
-    title: "Yangi suhbat", 
-    model: DEFAULT_MODEL, 
+  } catch { }
+  return [{
+    id: "chat-1",
+    title: "Yangi suhbat",
+    model: DEFAULT_MODEL,
     messages: [],
     mode: "chat",
     systemPrompt: SKILL_PRESETS[0].systemPrompt,
@@ -50,7 +51,7 @@ function getStoredActiveId(initialChats) {
     if (savedId && initialChats.some((c) => c.id === savedId)) {
       return savedId;
     }
-  } catch {}
+  } catch { }
   return initialChats[0]?.id || "chat-1";
 }
 
@@ -179,7 +180,7 @@ export default function Chat() {
   const [models, setModels] = useState([]);
   const [chats, setChats] = useState(getStoredChats);
   const [activeChatId, setActiveChatId] = useState(() => getStoredActiveId(chats));
-  
+
   const activeChat = chats.find((c) => c.id === activeChatId) || chats[0];
   const [selectedModel, setSelectedModel] = useState(() => activeChat?.model || DEFAULT_MODEL);
   const [messages, setMessages] = useState(() => activeChat?.messages || []);
@@ -194,10 +195,26 @@ export default function Chat() {
   const [activeSkillId, setActiveSkillId] = useState(() => activeChat?.skillId || "default");
   const [appMode, setAppMode] = useState(() => activeChat?.mode || "chat");
   const [projectFiles, setProjectFiles] = useState(() => activeChat?.projectFiles || {});
-  const [codexTab, setCodexTab] = useState("preview"); // "preview" | "code"
-  const [codexDevice, setCodexDevice] = useState("100%"); // "100%" | "768px" | "375px"
   const [selectedCodeFile, setSelectedCodeFile] = useState("App.jsx");
-  const [copiedFileName, setCopiedFileName] = useState(null);
+  const [codexPlan, setCodexPlan] = useState(() => activeChat?.codexPlan || null);
+  const [codexFileStatus, setCodexFileStatus] = useState({}); // path -> "pending" | "writing" | "valid" | "fixed"
+  const [codexPhaseMsg, setCodexPhaseMsg] = useState("");
+  // Panel collapse state persists per chat: { [chatId]: boolean }
+  const [codexCollapsedByChat, setCodexCollapsedByChat] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("oryxgen_codex_collapsed") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const isCodexCollapsed = !!codexCollapsedByChat[activeChatId];
+  const toggleCodexCollapsed = () => {
+    setCodexCollapsedByChat((prev) => {
+      const next = { ...prev, [activeChatId]: !prev[activeChatId] };
+      try { localStorage.setItem("oryxgen_codex_collapsed", JSON.stringify(next)); } catch { }
+      return next;
+    });
+  };
 
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
 
@@ -218,30 +235,11 @@ export default function Chat() {
   const inputRef = useRef(null);
   const thinkingTimerRef = useRef(null);
 
-  // Download all generated files as a ZIP archive
-  const downloadProjectZip = async () => {
-    const filesToZip = projectFiles && Object.keys(projectFiles).length > 0 ? projectFiles : { "App.jsx": "// No code yet" };
-    const zip = new JSZip();
-    Object.entries(filesToZip).forEach(([filePath, content]) => {
-      zip.file(filePath, content);
-    });
-    const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const cleanTitle = (activeChat?.title || "codex-app").replace(/[^a-zA-Z0-9_\-]/g, "_");
-    a.download = `${cleanTitle}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   const persistChats = (updatedChats) => {
     setChats(updatedChats);
     try {
       localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updatedChats));
-    } catch {}
+    } catch { }
   };
 
   const updateActiveChatState = (updates) => {
@@ -283,7 +281,7 @@ export default function Chat() {
         if (mounted && cat.models?.length) {
           setModels(cat.models);
         }
-      } catch {}
+      } catch { }
 
       if (currentUser) {
         try {
@@ -296,11 +294,11 @@ export default function Chat() {
               const merged = Array.from(mergedMap.values());
               try {
                 localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(merged));
-              } catch {}
+              } catch { }
               return merged;
             });
           }
-        } catch {}
+        } catch { }
       }
     }
     init();
@@ -346,16 +344,16 @@ export default function Chat() {
     setCurrentThinking("");
     try {
       localStorage.setItem(ACTIVE_CHAT_KEY, chatId);
-    } catch {}
+    } catch { }
     setSidebarOpen(false);
   };
 
   const handleNewChat = () => {
     const newId = `chat-${Date.now()}`;
-    const newChatObj = { 
-      id: newId, 
-      title: "Yangi suhbat", 
-      model: selectedModel, 
+    const newChatObj = {
+      id: newId,
+      title: "Yangi suhbat",
+      model: selectedModel,
       messages: [],
       mode: "chat",
       systemPrompt: SKILL_PRESETS[0].systemPrompt,
@@ -373,7 +371,7 @@ export default function Chat() {
     setCurrentThinking("");
     try {
       localStorage.setItem(ACTIVE_CHAT_KEY, newId);
-    } catch {}
+    } catch { }
     setSidebarOpen(false);
   };
 
@@ -383,16 +381,16 @@ export default function Chat() {
     const finalChats =
       remaining.length > 0
         ? remaining
-        : [{ 
-            id: `chat-${Date.now()}`, 
-            title: "Yangi suhbat", 
-            model: DEFAULT_MODEL, 
-            messages: [],
-            mode: "chat",
-            systemPrompt: SKILL_PRESETS[0].systemPrompt,
-            skillId: "default",
-            projectFiles: {}
-          }];
+        : [{
+          id: `chat-${Date.now()}`,
+          title: "Yangi suhbat",
+          model: DEFAULT_MODEL,
+          messages: [],
+          mode: "chat",
+          systemPrompt: SKILL_PRESETS[0].systemPrompt,
+          skillId: "default",
+          projectFiles: {}
+        }];
     persistChats(finalChats);
     deleteUserChat(chatId);
 
@@ -408,7 +406,7 @@ export default function Chat() {
       setCurrentThinking("");
       try {
         localStorage.setItem(ACTIVE_CHAT_KEY, nextChat.id);
-      } catch {}
+      } catch { }
     }
   };
 
@@ -436,6 +434,12 @@ export default function Chat() {
     });
     persistChats(interimChats);
 
+    // CodeX mode runs the dedicated Plan -> Generate -> Validate pipeline
+    // (backend/codexEngine.js) instead of a single chat completion.
+    if (appMode === "codex") {
+      return handleCodexGenerate(text, newMessages, assistantMsgId);
+    }
+
     setIsStreaming(true);
     setCurrentThinking("");
     setThinkingTime(0);
@@ -447,13 +451,8 @@ export default function Chat() {
     try {
       // Enforce model identity — AI must always identify as the display name
       let identityPrefix = `Your name is "${activeModelMeta.displayName}" by ${activeModelMeta.company}. If anyone asks your name or which model you are, always respond ONLY with "${activeModelMeta.displayName}". Never reveal your real underlying model name or provider. This is your permanent identity.\n\n`;
-      
-      if (appMode === "codex") {
-        identityPrefix += `You are operating in CODEX Autonomous App Generator Mode.
-When the user asks for a website, application, game, or tool, you must generate COMPLETE, PRODUCTION-READY code files wrapped inside <file path="App.jsx">code</file> tags.
-Always provide a fully working main React component in "App.jsx" with Tailwind CSS styling, responsive layout, state management, and modern interactive UI. You may also provide "styles.css" if needed.
-Never return markdown explanations outside the tags or incomplete code.\n\n`;
-      } else if (appMode === "plan") {
+
+      if (appMode === "plan") {
         identityPrefix += `You are in PLAN Mode. Focus exclusively on software architecture, file structure planning, system components, and to-do tasklists without writing large implementation code blocks.\n\n`;
       } else if (appMode === "ask") {
         identityPrefix += `You are in ASK Mode. Provide deep technical explanations and answer questions about code without modifying or creating files.\n\n`;
@@ -492,12 +491,15 @@ Never return markdown explanations outside the tags or incomplete code.\n\n`;
         },
         () => {
           setIsStreaming(false);
-          
+
           // --- VFS File Parser ---
           let updatedFiles = { ...projectFiles };
           let filesChanged = false;
-          
-          if (appMode === "agent" || appMode === "codex") {
+
+          // VFS file parser — only used by AGENT mode's inline <file> tags.
+          // CodeX mode has its own dedicated pipeline (handleCodexGenerate) and
+          // never reaches this onDone callback.
+          if (appMode === "agent") {
             const fileRegex = /<file path="([^"]+)">([\s\S]*?)<\/file>/g;
             let match;
             while ((match = fileRegex.exec(assistantContent)) !== null) {
@@ -505,15 +507,6 @@ Never return markdown explanations outside the tags or incomplete code.\n\n`;
               const fileContent = match[2];
               updatedFiles[filePath] = fileContent;
               filesChanged = true;
-            }
-
-            // Fallback: If in CodeX mode and no <file> tags were used, check for markdown code blocks
-            if (!filesChanged && appMode === "codex") {
-              const codeBlockMatch = assistantContent.match(/```(?:jsx|javascript|js|tsx|html)?\s*([\s\S]*?)```/);
-              if (codeBlockMatch && codeBlockMatch[1].trim().length > 30) {
-                updatedFiles["App.jsx"] = codeBlockMatch[1].trim();
-                filesChanged = true;
-              }
             }
           }
 
@@ -536,10 +529,10 @@ Never return markdown explanations outside the tags or incomplete code.\n\n`;
               if (c.id === activeChatId) {
                 const firstUserMsg = finalMessages.find((m) => m.role === "user");
                 const title = c.title === "Yangi suhbat" && firstUserMsg ? firstUserMsg.content.slice(0, 32) : c.title;
-                const updatedChat = { 
-                  ...c, 
-                  title, 
-                  messages: finalMessages, 
+                const updatedChat = {
+                  ...c,
+                  title,
+                  messages: finalMessages,
                   model: selectedModel,
                   projectFiles: filesChanged ? updatedFiles : c.projectFiles
                 };
@@ -548,7 +541,7 @@ Never return markdown explanations outside the tags or incomplete code.\n\n`;
               }
               return c;
             });
-            try { localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updated)); } catch {}
+            try { localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updated)); } catch { }
             return updated;
           });
         },
@@ -565,6 +558,95 @@ Never return markdown explanations outside the tags or incomplete code.\n\n`;
       setMessages(errMessages);
       persistChats(chats.map((c) => (c.id === activeChatId ? { ...c, messages: errMessages } : c)));
     }
+  };
+
+  // CodeX Autonomous Pipeline — Plan -> Generate -> Validate.
+  // Streams backend/codexEngine.js events via /api/codex/generate (SSE)
+  // and reflects live progress (plan + per-file status) into the chat UI.
+  const handleCodexGenerate = async (promptText, newMessages, assistantMsgId) => {
+    setIsStreaming(true);
+    setCodexPlan(null);
+    setCodexFileStatus({});
+    setCodexPhaseMsg("Loyiha rejasi tuzilmoqda...");
+
+    setMessages((prev) => [
+      ...prev,
+      { id: assistantMsgId, role: "assistant", content: "", isCodexProgress: true, model: selectedModel },
+    ]);
+
+    await streamCodexGenerate(
+      { prompt: promptText, chatId: activeChatId },
+      {
+        onPhase: (event) => {
+          setCodexPhaseMsg(event.message || "");
+        },
+        onPlan: (plan) => {
+          setCodexPlan(plan);
+          const initialStatus = {};
+          (plan.files || []).forEach((f) => {
+            initialStatus[f.path] = "pending";
+          });
+          setCodexFileStatus(initialStatus);
+        },
+        onFileStart: (event) => {
+          setCodexFileStatus((prev) => ({ ...prev, [event.path]: "writing" }));
+        },
+        onFileValidate: (event) => {
+          setCodexFileStatus((prev) => ({ ...prev, [event.path]: event.status === "fixed" ? "fixed" : "valid" }));
+        },
+        onFileDone: (event) => {
+          setProjectFiles((prev) => ({ ...prev, [event.path]: event.content }));
+        },
+        onDone: (event) => {
+          setIsStreaming(false);
+          setCodexPhaseMsg("");
+
+          const plan = event.plan || codexPlan;
+          const projectFilesResult = event.projectFiles || {};
+          setProjectFiles(projectFilesResult);
+          const firstKey = Object.keys(projectFilesResult)[0];
+          if (firstKey) setSelectedCodeFile(firstKey);
+
+          const summaryLine = `**${plan?.title || "Loyiha"} muvaffaqiyatli yaratildi!**\n\n${plan?.summary || ""}\n\nFayllar soni: ${Object.keys(projectFilesResult).length} ta.\n\n📦 ZIP yuklab olish tugmasi orqali loyihani hozir yuklab olishingiz mumkin.`;
+
+          const finalMessages = [
+            ...newMessages,
+            { id: assistantMsgId, role: "assistant", content: summaryLine, model: selectedModel },
+          ];
+          setMessages(finalMessages);
+
+          setChats((prevChats) => {
+            const updated = prevChats.map((c) => {
+              if (c.id === activeChatId) {
+                const updatedChat = {
+                  ...c,
+                  title: plan?.title || c.title,
+                  messages: finalMessages,
+                  model: selectedModel,
+                  projectFiles: projectFilesResult,
+                  codexPlan: plan,
+                };
+                saveUserChat(updatedChat);
+                return updatedChat;
+              }
+              return c;
+            });
+            try { localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updated)); } catch { }
+            return updated;
+          });
+        },
+        onError: (errMsg) => {
+          setIsStreaming(false);
+          setCodexPhaseMsg("");
+          const errMessages = [
+            ...newMessages,
+            { id: `error-${Date.now()}`, role: "assistant", content: `Xatolik: ${errMsg}`, model: selectedModel, isError: true },
+          ];
+          setMessages(errMessages);
+          persistChats(chats.map((c) => (c.id === activeChatId ? { ...c, messages: errMessages } : c)));
+        },
+      }
+    );
   };
 
   const handleKeyDown = (e) => {
@@ -750,499 +832,357 @@ Never return markdown explanations outside the tags or incomplete code.\n\n`;
       {/* Main Chat Content & Split Screen */}
       <div className={`chat-layout-content ${appMode === "codex" ? "codex-active" : ""}`}>
         <main className="chat-main">
-        {/* Top Navbar */}
-        <header className="chat-navbar">
-          <div className="navbar-left">
-            <button
-              type="button"
-              className="burger-btn"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              aria-label="Menyu"
-            >
-              <span />
-              <span />
-              <span />
-            </button>
-
-            {/* Model Selector Pill */}
-            <button
-              type="button"
-              className="model-selector-pill"
-              onClick={() => setIsModelModalOpen(true)}
-            >
-              <div className="model-pill-logo">
-                <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={17} />
-              </div>
-              <div className="model-pill-info">
-                <span className="model-pill-name">{activeModelMeta.displayName}</span>
-              </div>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="navbar-right">
-
-            {Object.keys(projectFiles).length > 0 && (
-              <a
-                href={`/preview/${activeChatId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="live-preview-btn"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-                Preview
-              </a>
-            )}
-
-            <button
-              type="button"
-              className="nav-btn-action"
-              onClick={() => setIsSkillModalOpen(true)}
-              title="Custom System Prompt"
-            >
-              System Prompt
-            </button>
-            <button
-              type="button"
-              className="nav-btn-action"
-              onClick={() => setIsMcpModalOpen(true)}
-              title="Model Context Protocol Server"
-            >
-              MCP Gateway
-            </button>
-            <Link to="/image" className="nav-btn-action">
-              Tasvir
-            </Link>
-            {!currentUser && (
+          {/* Top Navbar */}
+          <header className="chat-navbar">
+            <div className="navbar-left">
               <button
                 type="button"
-                className="nav-btn-login"
-                onClick={() => setIsAuthOpen(true)}
+                className="burger-btn"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                aria-label="Menyu"
               >
-                Kirish
+                <span />
+                <span />
+                <span />
               </button>
-            )}
-          </div>
-        </header>
 
-        {/* Message Stream Scrollview */}
-        <div className="chat-messages-container">
-          {messages.length === 0 ? (
-            <div className="chat-empty-state">
-              <div className="empty-logo-circle">
-                <img src="/Logo.png" alt="Oryxgen Logo" className="empty-brand-logo" />
-              </div>
-              <h2>Oryxgen AI</h2>
-              <p className="empty-sub">
-                Tanlangan model: <strong>{activeModelMeta.displayName}</strong> ({activeModelMeta.company})
-              </p>
-              {systemPrompt && (
-                <div className="active-system-pill">
-                  Faol ko'rsatma: <span>{systemPrompt.slice(0, 70)}...</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="messages-flow">
-              {messages.map((m) => (
-                <div key={m.id} className={`message-row ${m.role}`}>
-                  <div className="message-avatar">
-                    {m.role === "user" ? (
-                      currentUser?.avatar ? (
-                        <img src={currentUser.avatar} alt="User" />
-                      ) : (
-                        <div className="user-fallback-avatar">U</div>
-                      )
-                    ) : (
-                      <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
-                    )}
-                  </div>
-
-                  <div className="message-bubble-wrapper">
-                    {/* Collapsible Reasoning Thinking Accordion */}
-                    {m.thinking && (
-                      <div className="thinking-accordion">
-                        <button
-                          type="button"
-                          className="thinking-toggle-header"
-                          onClick={() => setThinkingExpanded(!thinkingExpanded)}
-                        >
-                          <div className="thinking-status-indicator">
-                            <span className="pulse-dot" />
-                            <span>Mantiqiy tahlil jarayoni</span>
-                          </div>
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="14"
-                            height="14"
-                            fill="currentColor"
-                            style={{ transform: thinkingExpanded ? "rotate(180deg)" : "none" }}
-                          >
-                            <path d="M7 10l5 5 5-5z" />
-                          </svg>
-                        </button>
-                        {thinkingExpanded && (
-                          <div className="thinking-body">
-                            <pre>{m.thinking}</pre>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="message-content">
-                      {m.content.split("```").map((part, idx) => {
-                        if (idx % 2 === 1) {
-                          const lines = part.split("\n");
-                          const lang = lines[0].trim() || "code";
-                          const code = lines.slice(1).join("\n");
-                          const codeId = `${m.id}-${idx}`;
-                          return (
-                            <div key={codeId} className="code-block-box">
-                              <div className="code-block-header">
-                                <span className="code-lang">{lang}</span>
-                                <button
-                                  type="button"
-                                  className="copy-code-btn"
-                                  onClick={() => copyCode(code, codeId)}
-                                >
-                                  {copiedCodeId === codeId ? "Nusxalandi" : "Nusxalash"}
-                                </button>
-                              </div>
-                              <pre className="code-block-pre">
-                                <code>{code}</code>
-                              </pre>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div
-                            key={idx}
-                            className="text-prose"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Real-time streaming thinking placeholder */}
-              {isStreaming && currentThinking && !messages.find((m) => m.thinking) && (
-                <div className="message-row assistant streaming">
-                  <div className="message-avatar">
-                    <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
-                  </div>
-                  <div className="message-bubble-wrapper">
-                    <div className="thinking-accordion">
-                      <div className="thinking-toggle-header">
-                        <div className="thinking-status-indicator">
-                          <span className="pulse-dot active" />
-                          <span>Fikrlanmoqda ({thinkingTime}s)...</span>
-                        </div>
-                      </div>
-                      <div className="thinking-body">
-                        <pre>{currentThinking}</pre>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
-
-        {/* Input Bar */}
-        <div className="chat-input-bar">
-          <div className="input-box-wrapper">
-            <div className="input-action-menu">
-              <button 
-                type="button" 
-                className={`action-plus-btn ${isModeMenuOpen ? "open" : ""}`}
-                onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
-                aria-label="Rejimni tanlash"
-              >
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </button>
-              
-              {isModeMenuOpen && (
-                <div className="mode-popup-menu">
-                  <button
-                    type="button"
-                    className={`popup-mode-item ${appMode === "plan" ? "active" : ""}`}
-                    onClick={() => { setAppMode("plan"); updateActiveChatState({ mode: "plan" }); setIsModeMenuOpen(false); }}
-                  >
-                    <div className="mode-icon">📋</div>
-                    <div className="mode-text">
-                      <strong>Plan</strong>
-                      <span>Loyiha arxitekturasini tuzish</span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    className={`popup-mode-item ${appMode === "agent" || appMode === "chat" ? "active" : ""}`}
-                    onClick={() => { setAppMode("agent"); updateActiveChatState({ mode: "agent" }); setIsModeMenuOpen(false); }}
-                  >
-                    <div className="mode-icon">⚡</div>
-                    <div className="mode-text">
-                      <strong>Agent</strong>
-                      <span>Kod yozish va tahrirlash</span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    className={`popup-mode-item ${appMode === "ask" ? "active" : ""}`}
-                    onClick={() => { setAppMode("ask"); updateActiveChatState({ mode: "ask" }); setIsModeMenuOpen(false); }}
-                  >
-                    <div className="mode-icon">💬</div>
-                    <div className="mode-text">
-                      <strong>Ask</strong>
-                      <span>Fayllarga tegmasdan savol berish</span>
-                    </div>
-                  </button>
-                  <div className="popup-divider"></div>
-                  <button
-                    type="button"
-                    className={`popup-mode-item codex-mode ${appMode === "codex" ? "active" : ""}`}
-                    onClick={() => { setAppMode("codex"); updateActiveChatState({ mode: "codex" }); setIsModeMenuOpen(false); }}
-                  >
-                    <div className="mode-icon">🚀</div>
-                    <div className="mode-text">
-                      <strong>CodeX</strong>
-                      <span>Yagona g'oya — to'liq avtonom ilova</span>
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <textarea
-              ref={inputRef}
-              className="chat-textarea"
-              placeholder={`${appMode.toUpperCase()}: ${activeModelMeta.displayName} ga yozing...`}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={1}
-            />
-            <button
-              type="button"
-              className="send-btn"
-              onClick={() => handleSendMessage()}
-              disabled={!input.trim() || isStreaming}
-              aria-label="Yuborish"
-            >
-              {isStreaming ? (
-                <div className="spinner-dot" />
-              ) : (
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-              )}
-            </button>
-          </div>
-        </div>
-      </main>
-
-      {/* CodeX Side Panel (Preview / Code & Download) */}
-      {appMode === "codex" && (
-        <aside className="codex-side-panel">
-          <div className="codex-panel-header">
-            <div className="codex-tabs-group">
+              {/* Model Selector Pill */}
               <button
                 type="button"
-                className={`codex-tab-btn ${codexTab === "preview" ? "active" : ""}`}
-                onClick={() => setCodexTab("preview")}
+                className="model-selector-pill"
+                onClick={() => setIsModelModalOpen(true)}
               >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
+                <div className="model-pill-logo">
+                  <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={17} />
+                </div>
+                <div className="model-pill-info">
+                  <span className="model-pill-name">{activeModelMeta.displayName}</span>
+                </div>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                  <path d="M7 10l5 5 5-5z" />
                 </svg>
-                Preview
-              </button>
-              <button
-                type="button"
-                className={`codex-tab-btn ${codexTab === "code" ? "active" : ""}`}
-                onClick={() => setCodexTab("code")}
-              >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="16 18 22 12 16 6" />
-                  <polyline points="8 6 2 12 8 18" />
-                </svg>
-                Code
               </button>
             </div>
 
-            <div className="codex-header-actions">
-              {codexTab === "preview" && (
-                <div className="codex-preview-device-toggle">
-                  <button
-                    type="button"
-                    className={`device-toggle-btn ${codexDevice === "100%" ? "active" : ""}`}
-                    onClick={() => setCodexDevice("100%")}
-                    title="Desktop ko'rinishi"
-                  >
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="2" y="3" width="20" height="14" rx="2" />
-                      <line x1="8" y1="21" x2="16" y2="21" />
-                      <line x1="12" y1="17" x2="12" y2="21" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className={`device-toggle-btn ${codexDevice === "768px" ? "active" : ""}`}
-                    onClick={() => setCodexDevice("768px")}
-                    title="Planshet ko'rinishi"
-                  >
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="4" y="2" width="16" height="20" rx="2" />
-                      <line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="3" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className={`device-toggle-btn ${codexDevice === "375px" ? "active" : ""}`}
-                    onClick={() => setCodexDevice("375px")}
-                    title="Telefon ko'rinishi"
-                  >
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="5" y="2" width="14" height="20" rx="2" />
-                      <line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="3" />
-                    </svg>
-                  </button>
-                </div>
+            <div className="navbar-right">
+
+              {Object.keys(projectFiles).length > 0 && (
+                <a
+                  href={`/preview/${activeChatId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="live-preview-btn"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  Preview
+                </a>
               )}
 
               <button
                 type="button"
-                className="codex-zip-btn"
-                onClick={downloadProjectZip}
-                title="Loyiha fayllarini ZIP arxiv sifatida yuklab olish"
+                className="nav-btn-action"
+                onClick={() => setIsSkillModalOpen(true)}
+                title="Custom System Prompt"
               >
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                ZIP Yuklab olish
+                System Prompt
               </button>
+              <button
+                type="button"
+                className="nav-btn-action"
+                onClick={() => setIsMcpModalOpen(true)}
+                title="Model Context Protocol Server"
+              >
+                MCP Gateway
+              </button>
+              <Link to="/image" className="nav-btn-action">
+                Tasvir
+              </Link>
+              {!currentUser && (
+                <button
+                  type="button"
+                  className="nav-btn-login"
+                  onClick={() => setIsAuthOpen(true)}
+                >
+                  Kirish
+                </button>
+              )}
             </div>
-          </div>
+          </header>
 
-          <div className="codex-panel-body">
-            {codexTab === "preview" ? (
-              <div className="codex-preview-view">
-                <div className="codex-iframe-wrapper" style={{ width: codexDevice }}>
-                  <iframe
-                    srcDoc={buildSandboxHtml(projectFiles)}
-                    title="CodeX Live Sandbox"
-                    className="codex-preview-iframe"
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-                  />
+          {/* Message Stream Scrollview */}
+          <div className="chat-messages-container">
+            {messages.length === 0 ? (
+              <div className="chat-empty-state">
+                <div className="empty-logo-circle">
+                  <img src="/Logo.png" alt="Oryxgen Logo" className="empty-brand-logo" />
                 </div>
+                <h2>Oryxgen AI</h2>
+                <p className="empty-sub">
+                  Tanlangan model: <strong>{activeModelMeta.displayName}</strong> ({activeModelMeta.company})
+                </p>
+                {systemPrompt && (
+                  <div className="active-system-pill">
+                    Faol ko'rsatma: <span>{systemPrompt.slice(0, 70)}...</span>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="codex-code-explorer">
-                {/* File Sidebar */}
-                <div className="codex-file-sidebar">
-                  <div className="codex-file-sidebar-title">Loyiha fayllari ({Object.keys(projectFiles).length || 1})</div>
-                  <div className="codex-file-list">
-                    {Object.keys(projectFiles).length === 0 ? (
-                      <button
-                        type="button"
-                        className="codex-file-item active"
-                        onClick={() => setSelectedCodeFile("App.jsx")}
-                      >
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                          <polyline points="14 2 14 8 20 8" />
-                        </svg>
-                        <span>App.jsx</span>
-                      </button>
-                    ) : (
-                      Object.keys(projectFiles).map((fileKey) => (
-                        <button
-                          key={fileKey}
-                          type="button"
-                          className={`codex-file-item ${(selectedCodeFile || Object.keys(projectFiles)[0]) === fileKey ? "active" : ""}`}
-                          onClick={() => setSelectedCodeFile(fileKey)}
-                        >
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                            <polyline points="14 2 14 8 20 8" />
-                          </svg>
-                          <span>{fileKey}</span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Code Editor Content View */}
-                <div className="codex-code-editor-area">
-                  <div className="codex-editor-topbar">
-                    <div className="codex-current-filename">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                      <span>{selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx"}</span>
+              <div className="messages-flow">
+                {messages.map((m) => (
+                  <div key={m.id} className={`message-row ${m.role}`}>
+                    <div className="message-avatar">
+                      {m.role === "user" ? (
+                        currentUser?.avatar ? (
+                          <img src={currentUser.avatar} alt="User" />
+                        ) : (
+                          <div className="user-fallback-avatar">U</div>
+                        )
+                      ) : (
+                        <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
+                      )}
                     </div>
-                    <div className="codex-editor-actions">
-                      <button
-                        type="button"
-                        className="codex-copy-file-btn"
-                        onClick={() => {
-                          const activeKey = selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx";
-                          const contentToCopy = projectFiles[activeKey] || "// Fayl kodi mavjud emas";
-                          navigator.clipboard.writeText(contentToCopy);
-                          setCopiedFileName(activeKey);
-                          setTimeout(() => setCopiedFileName(null), 2000);
-                        }}
-                      >
-                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                        </svg>
-                        {copiedFileName === (selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx") ? "Nusxalandi" : "Nusxalash"}
-                      </button>
+
+                    <div className="message-bubble-wrapper">
+                      {/* Collapsible Reasoning Thinking Accordion */}
+                      {m.thinking && (
+                        <div className="thinking-accordion">
+                          <button
+                            type="button"
+                            className="thinking-toggle-header"
+                            onClick={() => setThinkingExpanded(!thinkingExpanded)}
+                          >
+                            <div className="thinking-status-indicator">
+                              <span className="pulse-dot" />
+                              <span>Mantiqiy tahlil jarayoni</span>
+                            </div>
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="14"
+                              height="14"
+                              fill="currentColor"
+                              style={{ transform: thinkingExpanded ? "rotate(180deg)" : "none" }}
+                            >
+                              <path d="M7 10l5 5 5-5z" />
+                            </svg>
+                          </button>
+                          {thinkingExpanded && (
+                            <div className="thinking-body">
+                              <pre>{m.thinking}</pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {m.isCodexProgress && isStreaming ? (
+                        <div className="codex-generation-progress">
+                          <div className="codex-progress-phase">
+                            <span className="spinner-dot" />
+                            <span>{codexPhaseMsg || "Ishlanmoqda..."}</span>
+                          </div>
+                          {codexPlan && (
+                            <div className="codex-progress-filetree">
+                              <div className="codex-progress-filetree-title">
+                                {codexPlan.title} · {codexPlan.stack}
+                              </div>
+                              {(codexPlan.files || []).map((f) => {
+                                const status = codexFileStatus[f.path] || "pending";
+                                return (
+                                  <div key={f.path} className={`codex-progress-file-row status-${status}`}>
+                                    <span className="codex-progress-file-icon">
+                                      {status === "pending" && "○"}
+                                      {status === "writing" && "◐"}
+                                      {status === "valid" && "●"}
+                                      {status === "fixed" && "◆"}
+                                    </span>
+                                    <span className="codex-progress-file-path">{f.path}</span>
+                                    <span className="codex-progress-file-label">
+                                      {status === "pending" && "Navbatda"}
+                                      {status === "writing" && "Yozilmoqda..."}
+                                      {status === "valid" && "Tayyor"}
+                                      {status === "fixed" && "Tuzatildi"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="message-content">
+                          {m.content.split("```").map((part, idx) => {
+                            if (idx % 2 === 1) {
+                              const lines = part.split("\n");
+                              const lang = lines[0].trim() || "code";
+                              const code = lines.slice(1).join("\n");
+                              const codeId = `${m.id}-${idx}`;
+                              return (
+                                <div key={codeId} className="code-block-box">
+                                  <div className="code-block-header">
+                                    <span className="code-lang">{lang}</span>
+                                    <button
+                                      type="button"
+                                      className="copy-code-btn"
+                                      onClick={() => copyCode(code, codeId)}
+                                    >
+                                      {copiedCodeId === codeId ? "Nusxalandi" : "Nusxalash"}
+                                    </button>
+                                  </div>
+                                  <pre className="code-block-pre">
+                                    <code>{code}</code>
+                                  </pre>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div
+                                key={idx}
+                                className="text-prose"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
+                ))}
 
-                  <pre className="codex-code-content-pre">
-                    <code>{projectFiles[selectedCodeFile || Object.keys(projectFiles)[0] || "App.jsx"] || "// Loyiha fayli hali generatsiya qilinmagan.\n// Chapdagi chat orqali dastur yaratish bo'yicha so'rov yuboring."}</code>
-                  </pre>
-
-                  <div className="codex-code-footer-bar">
-                    <button
-                      type="button"
-                      className="codex-download-all-zip-btn"
-                      onClick={downloadProjectZip}
-                    >
-                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                      Barcha kodlarni ZIP qilib yuklab olish
-                    </button>
+                {/* Real-time streaming thinking placeholder */}
+                {isStreaming && currentThinking && !messages.find((m) => m.thinking) && (
+                  <div className="message-row assistant streaming">
+                    <div className="message-avatar">
+                      <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
+                    </div>
+                    <div className="message-bubble-wrapper">
+                      <div className="thinking-accordion">
+                        <div className="thinking-toggle-header">
+                          <div className="thinking-status-indicator">
+                            <span className="pulse-dot active" />
+                            <span>Fikrlanmoqda ({thinkingTime}s)...</span>
+                          </div>
+                        </div>
+                        <div className="thinking-body">
+                          <pre>{currentThinking}</pre>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                <div ref={messagesEndRef} />
               </div>
             )}
           </div>
-        </aside>
-      )}
-    </div>
+
+          {/* Input Bar */}
+          <div className="chat-input-bar">
+            <div className="input-box-wrapper">
+              <div className="input-action-menu">
+                <button
+                  type="button"
+                  className={`action-plus-btn ${isModeMenuOpen ? "open" : ""}`}
+                  onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
+                  aria-label="Rejimni tanlash"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                </button>
+
+                {isModeMenuOpen && (
+                  <div className="mode-popup-menu">
+                    <button
+                      type="button"
+                      className={`popup-mode-item ${appMode === "plan" ? "active" : ""}`}
+                      onClick={() => { setAppMode("plan"); updateActiveChatState({ mode: "plan" }); setIsModeMenuOpen(false); }}
+                    >
+                      <div className="mode-icon">📋</div>
+                      <div className="mode-text">
+                        <strong>Plan</strong>
+                        <span>Loyiha arxitekturasini tuzish</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`popup-mode-item ${appMode === "agent" || appMode === "chat" ? "active" : ""}`}
+                      onClick={() => { setAppMode("agent"); updateActiveChatState({ mode: "agent" }); setIsModeMenuOpen(false); }}
+                    >
+                      <div className="mode-icon">⚡</div>
+                      <div className="mode-text">
+                        <strong>Agent</strong>
+                        <span>Kod yozish va tahrirlash</span>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`popup-mode-item ${appMode === "ask" ? "active" : ""}`}
+                      onClick={() => { setAppMode("ask"); updateActiveChatState({ mode: "ask" }); setIsModeMenuOpen(false); }}
+                    >
+                      <div className="mode-icon">💬</div>
+                      <div className="mode-text">
+                        <strong>Ask</strong>
+                        <span>Fayllarga tegmasdan savol berish</span>
+                      </div>
+                    </button>
+                    <div className="popup-divider"></div>
+                    <button
+                      type="button"
+                      className={`popup-mode-item codex-mode ${appMode === "codex" ? "active" : ""}`}
+                      onClick={() => { setAppMode("codex"); updateActiveChatState({ mode: "codex" }); setIsModeMenuOpen(false); }}
+                    >
+                      <div className="mode-icon">🚀</div>
+                      <div className="mode-text">
+                        <strong>CodeX</strong>
+                        <span>Yagona g'oya — to'liq avtonom ilova</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <textarea
+                ref={inputRef}
+                className="chat-textarea"
+                placeholder={`${appMode.toUpperCase()}: ${activeModelMeta.displayName} ga yozing...`}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+              />
+              <button
+                type="button"
+                className="send-btn"
+                onClick={() => handleSendMessage()}
+                disabled={!input.trim() || isStreaming}
+                aria-label="Yuborish"
+              >
+                {isStreaming ? (
+                  <div className="spinner-dot" />
+                ) : (
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </main>
+
+        {/* CodeX Side Panel (Preview / Code / Download) — CodeXWorkspace.jsx owns
+          real multi-file preview, syntax highlighting, and its own tab/device state. */}
+        {appMode === "codex" && (
+          <CodeXWorkspace
+            projectFiles={projectFiles}
+            plan={codexPlan}
+            activeChatTitle={activeChat?.title || "CodeX App"}
+            isCollapsed={isCodexCollapsed}
+            onToggleCollapse={toggleCodexCollapsed}
+          />
+        )}
+      </div>
 
       {/* Model Selection Modal */}
       {isModelModalOpen && (

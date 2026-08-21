@@ -105,6 +105,27 @@ export async function resolveUpstream(capability = "chat", requestedModelId = ""
   return chain;
 }
 
+// Config-driven ranking of best free models for code generation and multi-file project synthesis
+export const CODEX_RANKED_MODELS = [
+  "qwen/qwen-2.5-coder-32b-instruct:free",
+  "cohere/north-mini-code:free",
+  "deepseek/deepseek-r1:free",
+  "deepseek/deepseek-chat:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "openai/gpt-oss-20b:free",
+  "z-ai/glm-5.2:free",
+  "openrouter/free",
+];
+
+export async function resolveBestCodeModel() {
+  const pool = new Set(await getFreePool());
+  const viable = CODEX_RANKED_MODELS.filter((id) => pool.has(id) || id === "openrouter/free");
+  return [...new Set([...viable, ...CODEX_RANKED_MODELS, "openrouter/free"])];
+}
+
 export function pollinationsModel(displayId = "") {
   const lower = displayId.toLowerCase();
   if (lower.includes("schnell") || lower.includes("dalle-2") || lower.includes("turbo")) {

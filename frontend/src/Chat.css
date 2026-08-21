@@ -526,6 +526,101 @@
   border: 1px solid #ffffff;
 }
 
+/* CodeX live generation progress (Plan -> Generate -> Validate) */
+.codex-generation-progress {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 13.5px;
+  color: #eeeeee;
+  min-width: 280px;
+}
+
+.codex-progress-phase {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #a1a1aa;
+  font-size: 13px;
+}
+
+.codex-progress-filetree {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.codex-progress-filetree-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+
+.codex-progress-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.codex-progress-file-icon {
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.codex-progress-file-row.status-pending {
+  color: #52525b;
+}
+
+.codex-progress-file-row.status-writing {
+  color: #60a5fa;
+}
+
+.codex-progress-file-row.status-writing .codex-progress-file-icon {
+  animation: codex-pulse 1s ease-in-out infinite;
+}
+
+.codex-progress-file-row.status-valid {
+  color: #34d399;
+}
+
+.codex-progress-file-row.status-fixed {
+  color: #fbbf24;
+}
+
+.codex-progress-file-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d4d4d8;
+}
+
+.codex-progress-file-label {
+  font-size: 11px;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+@keyframes codex-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
 /* Thinking accordion */
 .thinking-accordion {
   background: rgba(255, 255, 255, 0.03);
@@ -566,9 +661,20 @@
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.9); opacity: 0.6; }
-  50% { transform: scale(1.3); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.6; }
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
 }
 
 .thinking-body {
@@ -1161,8 +1267,15 @@
 }
 
 @keyframes popupFade {
-  from { opacity: 0; transform: translateY(10px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .popup-mode-item {
@@ -1351,12 +1464,14 @@
   .chat-layout-content.codex-active {
     flex-direction: column;
   }
+
   .chat-layout-content.codex-active .chat-main {
     width: 100%;
     flex: 1;
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
+
   .chat-layout-content.codex-active .codex-side-panel {
     width: 100%;
     height: 50vh;
@@ -1671,4 +1786,3 @@
   height: 48px;
   color: #3f3f46;
 }
-
