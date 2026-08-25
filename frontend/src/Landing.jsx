@@ -150,6 +150,17 @@ export default function Landing() {
             Deep Deliberation & Thinking UI
           </div>
         </footer>
+
+        <div style={{ padding: "20px", textAlign: "center", fontSize: "13px", color: "rgba(255,255,255,0.45)", zIndex: 10, position: "relative" }}>
+          <span>© 2026 Oryxgen AI (avg-ai-creator.site) · </span>
+          <Link to="/privacy" style={{ color: "rgba(255,255,255,0.7)", textDecoration: "none", margin: "0 8px" }}>
+            Maxfiylik siyosati
+          </Link>
+          <span>·</span>
+          <Link to="/terms" style={{ color: "rgba(255,255,255,0.7)", textDecoration: "none", margin: "0 8px" }}>
+            Foydalanish shartlari
+          </Link>
+        </div>
       </div>
     </>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import emailjs from "@emailjs/browser";
 import { fetchGoogleAuthUrl, googleAuth, sendAuthCode, verifyAuthCode } from "./api";
 import "./AuthModal.css";
@@ -303,7 +304,15 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
         )}
 
         <div className="auth-footer-note">
-          Oryxgen AI xavfsiz va shifrlangan tizim orqali ishlaydi.
+          Tizimga kirish orqali siz{" "}
+          <Link to="/terms" onClick={onClose} style={{ color: "#818cf8", textDecoration: "underline" }}>
+            Foydalanish shartlari
+          </Link>{" "}
+          va{" "}
+          <Link to="/privacy" onClick={onClose} style={{ color: "#818cf8", textDecoration: "underline" }}>
+            Maxfiylik siyosati
+          </Link>
+          ga rozilik bildirasiz.
         </div>
       </div>
     </div>

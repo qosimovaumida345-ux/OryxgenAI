@@ -7,6 +7,8 @@ import ImageStudioPage from "./ImageStudio.jsx";
 import "./index.css";
 import PreviewPage from "./Preview.jsx";
 import McpConnect from "./McpConnect.jsx";
+import PrivacyPage from "./Privacy.jsx";
+import TermsPage from "./Terms.jsx";
 
 export default function App() {
   const [appReady, setAppReady] = useState(false);
@@ -32,6 +34,8 @@ export default function App() {
       <Route path="/image" element={<ImageStudioPage />} />
       <Route path="/preview/:id" element={<PreviewPage />} />
       <Route path="/mcp-connect" element={<McpConnect />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
