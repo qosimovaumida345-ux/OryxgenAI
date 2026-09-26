@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import AuthModal from "./AuthModal";
-import { completeMcpAuthorize, getAuthToken, getStoredUser } from "./api";
+import { completeMcpAuthorize, getAuthToken, getStoredUser, clearAuthSession } from "./api";
 import "./Chat.css";
 
 // Landing page for the MCP OAuth authorization-code flow. The backend's
@@ -36,8 +36,14 @@ export default function McpConnect() {
             });
             window.location.href = redirectTo;
         } catch (err) {
-            setStatus("error");
-            setErrorMsg(err.message || "Ulanishni yakunlab bo'lmadi.");
+            if (err.message?.includes("login_required") || err.message?.includes("401") || err.message?.includes("User no longer exists")) {
+                clearAuthSession();
+                setStatus("needs_login");
+                setAuthModalOpen(true);
+            } else {
+                setStatus("error");
+                setErrorMsg(err.message || "Ulanishni yakunlab bo'lmadi.");
+            }
         }
     };
 
@@ -82,9 +88,25 @@ export default function McpConnect() {
             {status === "checking" && <p style={{ color: "#888" }}>Tekshirilmoqda...</p>}
 
             {status === "needs_login" && (
-                <p style={{ color: "#888", maxWidth: 360 }}>
-                    MCP mijozini (masalan Claude) Oryxgen AI hisobingizga ulash uchun avval tizimga kiring.
-                </p>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                    <p style={{ color: "#888", maxWidth: 360, margin: 0 }}>
+                        MCP mijozini (masalan Claude) Oryxgen AI hisobingizga ulash uchun avval tizimga kiring.
+                    </p>
+                    <button
+                        onClick={() => setAuthModalOpen(true)}
+                        style={{
+                            padding: "10px 24px",
+                            background: "#fff",
+                            color: "#000",
+                            border: "none",
+                            borderRadius: 8,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                        }}
+                    >
+                        Tizimga kirish
+                    </button>
+                </div>
             )}
 
             {status === "completing" && <p style={{ color: "#888" }}>Ulanish yakunlanmoqda, hozir qaytarib yuboriladi...</p>}

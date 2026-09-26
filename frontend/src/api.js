@@ -1,4 +1,4 @@
-const API = import.meta.env.VITE_API_URL || "";
+const API = (import.meta.env.VITE_API_URL || "https://oryxgen-api.onrender.com").replace(/\/$/, "");
 
 // Auth storage helpers
 const TOKEN_KEY = "oryxgen_auth_token";
