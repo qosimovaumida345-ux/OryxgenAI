@@ -937,12 +937,26 @@ function requireMcpAuth(req, res, next) {
 const OAUTH_ALLOWED_REDIRECT_HOSTS = [
   "claude.ai",
   "claude.com",
+  "anthropic.com",
+  "cursor.sh",
+  "cursor.com",
+  "vscode.dev",
   "localhost",
+  "127.0.0.1",
 ];
 
+// RFC 7591 Dynamic Client Registration store
+const dynamicOAuthClients = new Map();
+
 function isAllowedRedirectUri(redirectUri) {
+  if (!redirectUri) return false;
   try {
     const parsed = new URL(redirectUri);
+    for (const client of dynamicOAuthClients.values()) {
+      if (client.redirect_uris && client.redirect_uris.includes(redirectUri)) {
+        return true;
+      }
+    }
     return OAUTH_ALLOWED_REDIRECT_HOSTS.some(
       (h) => parsed.hostname === h || parsed.hostname.endsWith(`.${h}`)
     );
@@ -957,26 +971,42 @@ function getRequestBase(req) {
   return `${proto}://${host}`;
 }
 
-// RFC 9728 Protected Resource Metadata — tells an MCP client which
-// authorization server protects THIS resource (/api/mcp), and is what the
-// WWW-Authenticate header below points to. Without this, a spec-compliant
-// MCP client (like Claude.ai's connector) has no formal way to discover
-// oauth-authorization-server from a 401 on the resource itself — it may
-// only ever find it if it happens to probe the bare origin, which isn't
-// guaranteed. This was the missing piece: /.well-known/oauth-authorization-
-// server existed and was correct, but nothing on the 401 response told the
-// client where to look for it.
+// RFC 7591 Dynamic Client Registration endpoint for Claude and other MCP clients
+app.post(["/register", "/oauth/register", "/api/register"], express.json(), (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  const body = req.body || {};
+  const clientId = `claude-client-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const clientData = {
+    client_id: clientId,
+    client_name: body.client_name || "Claude MCP Client",
+    redirect_uris: body.redirect_uris || [],
+    grant_types: body.grant_types || ["authorization_code"],
+    response_types: body.response_types || ["code"],
+    token_endpoint_auth_method: body.token_endpoint_auth_method || "none",
+  };
+  dynamicOAuthClients.set(clientId, clientData);
+  res.status(201).json(clientData);
+});
+
+app.options(["/register", "/oauth/register", "/api/register"], (_req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.status(204).end();
+});
+
+// RFC 9728 Protected Resource Metadata
 app.get("/.well-known/oauth-protected-resource", (req, res) => {
   const base = getRequestBase(req);
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.json({
     resource: `${base}/api/mcp`,
     authorization_servers: [base],
   });
 });
 
-// Sets WWW-Authenticate on a 401 so an MCP client's standard OAuth discovery
-// (RFC 9728 → RFC 8414) can find /authorize and /token starting from the
-// resource itself, per the MCP authorization spec (2025-06-18+).
+// Sets WWW-Authenticate on a 401
 function setWwwAuthenticateHeader(req, res) {
   const base = getRequestBase(req);
   res.setHeader(
@@ -985,14 +1015,15 @@ function setWwwAuthenticateHeader(req, res) {
   );
 }
 
-// OAuth 2.0 Authorization Server Metadata (RFC 8414) — lets MCP clients
-// discover /authorize and /token without them being hardcoded on the client.
-app.get("/.well-known/oauth-authorization-server", (req, res) => {
+// OAuth 2.0 Authorization Server Metadata (RFC 8414 & OpenID Connect)
+app.get(["/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"], (req, res) => {
   const base = getRequestBase(req);
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.json({
     issuer: base,
     authorization_endpoint: `${base}/authorize`,
     token_endpoint: `${base}/token`,
+    registration_endpoint: `${base}/register`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
@@ -1001,26 +1032,21 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
 });
 
 // GET /authorize — the browser is redirected here by the MCP client.
-// We hand off to the frontend's login UI (which already has working OTP +
-// Google auth) rather than duplicating a login form server-side, preserving
-// every OAuth param so the frontend can complete the flow after login.
 app.get("/authorize", (req, res) => {
   const { response_type, client_id, redirect_uri, code_challenge, code_challenge_method, state } = req.query;
 
   if (response_type !== "code") {
     return res.status(400).json({ error: "unsupported_response_type" });
   }
-  if (!client_id) {
-    console.log("[OAUTH] Missing client_id in /authorize request");
-    return res.status(400).json({ error: "invalid_request", error_description: "Missing client_id parameter." });
-  }
 
-  const cleanClientId = String(client_id).trim();
+  const cleanClientId = client_id ? String(client_id).trim() : MCP_CLIENT_ID;
   const allowedClients = [MCP_CLIENT_ID, "oryxgen-ai-mcp-client", "oryxgen-cursor-client", "oryxgen-vscode-client"];
   
-  if (!allowedClients.includes(cleanClientId)) {
-    console.log(`[OAUTH] Unknown client_id rejected: "${cleanClientId}"`);
-    return res.status(400).json({ error: "unauthorized_client", error_description: "Unknown client_id." });
+  if (!allowedClients.includes(cleanClientId) && !dynamicOAuthClients.has(cleanClientId) && !cleanClientId.includes("claude")) {
+    if (!isAllowedRedirectUri(redirect_uri)) {
+      console.log(`[OAUTH] Unknown client_id rejected: "${cleanClientId}"`);
+      return res.status(400).json({ error: "unauthorized_client", error_description: "Unknown client_id." });
+    }
   }
   if (!redirect_uri || !isAllowedRedirectUri(redirect_uri)) {
     return res.status(400).json({ error: "invalid_request", error_description: "redirect_uri is missing or not allowed." });
@@ -1038,11 +1064,7 @@ app.get("/authorize", (req, res) => {
   res.redirect(302, `${FRONTEND_URL}/mcp-connect?${params.toString()}`);
 });
 
-// POST /api/mcp/complete-authorize — called by the frontend's /mcp-connect
-// page once the user is logged in (existing session or fresh OTP/Google
-// login). Mints the short-lived authorization code bound to this user +
-// PKCE challenge, and returns the redirect_uri the frontend should send the
-// browser back to, completing the hop to the MCP client.
+// POST /api/mcp/complete-authorize
 app.post("/api/mcp/complete-authorize", authMiddleware, (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: "login_required" });
@@ -1067,19 +1089,14 @@ app.post("/api/mcp/complete-authorize", authMiddleware, (req, res) => {
   res.json({ redirectTo: `${redirectUri}?${params.toString()}` });
 });
 
-// POST /token — the MCP client exchanges the authorization code (+ PKCE
-// code_verifier) for an access token. The access token is the same signed
-// app JWT generateToken() issues for normal login, so it works identically
-// with requireMcpAuth and every other authMiddleware-gated route.
+// POST /token — the MCP client exchanges the authorization code (+ PKCE code_verifier) for an access token.
 app.post("/token", express.urlencoded({ extended: true }), async (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
   const body = { ...req.query, ...req.body };
   const { grant_type, code, redirect_uri, code_verifier, client_id } = body;
 
   if (grant_type !== "authorization_code") {
     return res.status(400).json({ error: "unsupported_grant_type" });
-  }
-  if (client_id && client_id !== MCP_CLIENT_ID) {
-    return res.status(400).json({ error: "unauthorized_client" });
   }
   if (!code) {
     return res.status(400).json({ error: "invalid_request", error_description: "code is required." });
