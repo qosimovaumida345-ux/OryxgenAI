@@ -1,1 +1,6 @@
+/api/*  https://oryxgen-api.onrender.com/api/:splat  200
+/.well-known/*  https://oryxgen-api.onrender.com/.well-known/:splat  200
+/authorize  https://oryxgen-api.onrender.com/authorize  302
+/token  https://oryxgen-api.onrender.com/token  200
+/register  https://oryxgen-api.onrender.com/register  200
 /*    /index.html   200
