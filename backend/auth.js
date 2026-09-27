@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { findOrCreateUser, saveOtp, verifyOtp, findUserById, updateUserSystemPrompt } from "./db.js";
+import { findOrCreateUser, saveOtp, verifyOtp, findUserById, updateUserSystemPrompt, findApiKeyByHash } from "./db.js";
 
 const JWT_SECRET = (process.env.JWT_SECRET || "oryxgen-ultra-secret-key-2026").trim();
 const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || "").trim();
@@ -379,4 +379,52 @@ export function setupAuthRoutes(app) {
     await updateUserSystemPrompt(req.user.id, systemPrompt);
     res.json({ ok: true });
   });
+}
+
+// ── API Key Generation & Verification ──
+
+export function generateApiKey(prefix = "oryx_live_") {
+  const randomPart = crypto.randomBytes(24).toString("hex");
+  const rawKey = `${prefix}${randomPart}`;
+  const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+  const keyPrefix = rawKey.substring(0, 16);
+  return { rawKey, keyHash, keyPrefix };
+}
+
+export async function apiKeyAuthMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization || "";
+  let rawKey = "";
+
+  if (authHeader.startsWith("Bearer ")) {
+    rawKey = authHeader.slice(7).trim();
+  } else if (req.headers["x-api-key"]) {
+    rawKey = String(req.headers["x-api-key"]).trim();
+  }
+
+  if (!rawKey) {
+    return res.status(401).json({
+      error: {
+        message: "API kaliti kiritilmagan. So'rov sarlavhasida 'Authorization: Bearer oryx_live_...' bo'lishi shart.",
+        type: "invalid_request_error",
+        code: "missing_api_key",
+      },
+    });
+  }
+
+  const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+  const keyRecord = await findApiKeyByHash(keyHash);
+
+  if (!keyRecord) {
+    return res.status(401).json({
+      error: {
+        message: "Yaroqsiz yoki bekor qilingan API kalit. Oryxgen AI platformasida yangi API kalit yarating.",
+        type: "authentication_error",
+        code: "invalid_api_key",
+      },
+    });
+  }
+
+  req.apiKey = keyRecord;
+  req.user = { id: keyRecord.user_id, email: keyRecord.user_email, name: keyRecord.user_name };
+  next();
 }

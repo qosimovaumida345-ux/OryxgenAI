@@ -17,6 +17,8 @@ const inMemory = {
   otps: new Map(),
   chats: [],
   messages: [],
+  apiKeys: [],
+  usageLogs: [],
 };
 
 export async function initDb() {
@@ -76,6 +78,31 @@ export async function initDb() {
         role VARCHAR(50) NOT NULL,
         content TEXT NOT NULL,
         thinking TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        key_hash VARCHAR(255) NOT NULL UNIQUE,
+        key_prefix VARCHAR(32) NOT NULL,
+        name VARCHAR(100) DEFAULT 'Default API Key',
+        input_tokens BIGINT DEFAULT 0,
+        output_tokens BIGINT DEFAULT 0,
+        requests_count BIGINT DEFAULT 0,
+        last_used_at TIMESTAMP WITH TIME ZONE,
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS api_usage_logs (
+        id SERIAL PRIMARY KEY,
+        key_prefix VARCHAR(32) NOT NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        model VARCHAR(100) NOT NULL,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        duration_ms INTEGER DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `);
@@ -286,4 +313,217 @@ export async function deleteUserChat(chatId, userId) {
   }
   const idx = inMemory.chats.findIndex((c) => c.id === chatId && (!userId || c.user_id === userId));
   if (idx >= 0) inMemory.chats.splice(idx, 1);
+}
+
+// ── API Key Management & Token Usage Analytics ──
+
+export async function saveApiKey({ userId, keyHash, keyPrefix, name = "Default API Key" }) {
+  const rowData = {
+    user_id: userId,
+    key_hash: keyHash,
+    key_prefix: keyPrefix,
+    name,
+    input_tokens: 0,
+    output_tokens: 0,
+    requests_count: 0,
+    status: "active",
+    created_at: new Date(),
+  };
+
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, status)
+         VALUES ($1, $2, $3, $4, 'active')
+         RETURNING id, key_prefix, name, input_tokens, output_tokens, requests_count, status, created_at`,
+        [userId, keyHash, keyPrefix, name]
+      );
+      if (res.rows.length) return res.rows[0];
+    } catch (err) {
+      console.warn("DB saveApiKey error:", err.message);
+    }
+  }
+
+  const inMemItem = { id: inMemory.apiKeys.length + 1, ...rowData };
+  inMemory.apiKeys.push(inMemItem);
+  return inMemItem;
+}
+
+export async function getUserApiKeys(userId) {
+  if (pool && userId) {
+    try {
+      const res = await pool.query(
+        `SELECT id, key_prefix, name, input_tokens, output_tokens, requests_count, last_used_at, status, created_at
+         FROM api_keys
+         WHERE user_id = $1 AND status != 'revoked'
+         ORDER BY id DESC`,
+        [userId]
+      );
+      return res.rows;
+    } catch (err) {
+      console.warn("DB getUserApiKeys error:", err.message);
+    }
+  }
+  return inMemory.apiKeys.filter((k) => (!userId || k.user_id === userId) && k.status !== "revoked");
+}
+
+export async function deleteApiKey(keyId, userId) {
+  if (pool && userId) {
+    try {
+      await pool.query("UPDATE api_keys SET status = 'revoked' WHERE id = $1 AND user_id = $2", [keyId, userId]);
+      return true;
+    } catch (err) {
+      console.warn("DB deleteApiKey error:", err.message);
+    }
+  }
+  const item = inMemory.apiKeys.find((k) => k.id === Number(keyId) && (!userId || k.user_id === userId));
+  if (item) item.status = "revoked";
+  return true;
+}
+
+export async function findApiKeyByHash(keyHash) {
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT k.*, u.email as user_email, u.name as user_name
+         FROM api_keys k
+         LEFT JOIN users u ON u.id = k.user_id
+         WHERE k.key_hash = $1 AND k.status = 'active'`,
+        [keyHash]
+      );
+      if (res.rows.length) return res.rows[0];
+    } catch (err) {
+      console.warn("DB findApiKeyByHash error:", err.message);
+    }
+  }
+  return inMemory.apiKeys.find((k) => k.key_hash === keyHash && k.status === "active") || null;
+}
+
+export async function logApiUsage({ keyPrefix, userId = null, model, inputTokens = 0, outputTokens = 0, durationMs = 0 }) {
+  const now = new Date();
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO api_usage_logs (key_prefix, user_id, model, input_tokens, output_tokens, duration_ms, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [keyPrefix, userId, model, inputTokens, outputTokens, durationMs, now]
+      );
+      await pool.query(
+        `UPDATE api_keys
+         SET input_tokens = input_tokens + $1,
+             output_tokens = output_tokens + $2,
+             requests_count = requests_count + 1,
+             last_used_at = $3
+         WHERE key_prefix = $4`,
+        [inputTokens, outputTokens, now, keyPrefix]
+      );
+    } catch (err) {
+      console.warn("DB logApiUsage error:", err.message);
+    }
+  }
+
+  inMemory.usageLogs.push({
+    keyPrefix,
+    userId,
+    model,
+    inputTokens,
+    outputTokens,
+    durationMs,
+    created_at: now,
+  });
+
+  const k = inMemory.apiKeys.find((item) => item.key_prefix === keyPrefix);
+  if (k) {
+    k.input_tokens = (k.input_tokens || 0) + inputTokens;
+    k.output_tokens = (k.output_tokens || 0) + outputTokens;
+    k.requests_count = (k.requests_count || 0) + 1;
+    k.last_used_at = now;
+  }
+}
+
+export async function getApiUsageAnalytics(userId) {
+  let logs = [];
+  let keys = [];
+
+  if (pool && userId) {
+    try {
+      const keysRes = await pool.query(
+        "SELECT id, key_prefix, name, input_tokens, output_tokens, requests_count, last_used_at, created_at FROM api_keys WHERE user_id = $1 AND status != 'revoked'",
+        [userId]
+      );
+      keys = keysRes.rows;
+
+      const logsRes = await pool.query(
+        `SELECT model, input_tokens, output_tokens, duration_ms, created_at
+         FROM api_usage_logs
+         WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '24 HOURS'
+         ORDER BY created_at DESC`,
+        [userId]
+      );
+      logs = logsRes.rows;
+    } catch (err) {
+      console.warn("DB getApiUsageAnalytics error:", err.message);
+    }
+  } else {
+    keys = inMemory.apiKeys.filter((k) => (!userId || k.user_id === userId) && k.status !== "revoked");
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    logs = inMemory.usageLogs.filter(
+      (l) => (!userId || l.userId === userId) && new Date(l.created_at).getTime() >= dayAgo
+    );
+  }
+
+  const totalInputTokens = keys.reduce((sum, k) => sum + Number(k.input_tokens || 0), 0);
+  const totalOutputTokens = keys.reduce((sum, k) => sum + Number(k.output_tokens || 0), 0);
+  const totalRequests = keys.reduce((sum, k) => sum + Number(k.requests_count || 0), 0);
+
+  // Compute TPM (Tokens Per Minute in the last 15 minutes)
+  const fifteenMinAgo = Date.now() - 15 * 60 * 1000;
+  const recentLogs = logs.filter((l) => new Date(l.created_at).getTime() >= fifteenMinAgo);
+  const recentTokens = recentLogs.reduce((sum, l) => sum + Number(l.input_tokens || 0) + Number(l.output_tokens || 0), 0);
+  const currentTpm = Math.round(recentTokens / 15);
+
+  // Generate 12 time-slice buckets for the 3D animated chart
+  const buckets = [];
+  const now = Date.now();
+  for (let i = 11; i >= 0; i--) {
+    const bucketStart = now - (i + 1) * 5 * 60 * 1000;
+    const bucketEnd = now - i * 5 * 60 * 1000;
+    const bucketLogs = logs.filter((l) => {
+      const t = new Date(l.created_at).getTime();
+      return t >= bucketStart && t < bucketEnd;
+    });
+
+    const inTok = bucketLogs.reduce((acc, l) => acc + Number(l.input_tokens || 0), 0);
+    const outTok = bucketLogs.reduce((acc, l) => acc + Number(l.output_tokens || 0), 0);
+    const reqs = bucketLogs.length;
+
+    const dateObj = new Date(bucketEnd);
+    const timeLabel = `${String(dateObj.getHours()).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
+
+    buckets.push({
+      time: timeLabel,
+      inputTokens: inTok,
+      outputTokens: outTok,
+      requests: reqs,
+      totalTokens: inTok + outTok,
+    });
+  }
+
+  // Model breakdown
+  const modelStats = {};
+  logs.forEach((l) => {
+    const m = l.model || "other";
+    modelStats[m] = (modelStats[m] || 0) + 1;
+  });
+
+  return {
+    totalInputTokens,
+    totalOutputTokens,
+    totalTokens: totalInputTokens + totalOutputTokens,
+    totalRequests,
+    currentTpm,
+    activeKeysCount: keys.length,
+    buckets,
+    modelStats,
+  };
 }

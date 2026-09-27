@@ -2,9 +2,20 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import JSZip from "jszip";
-import { findModel, PUBLIC_IMAGE_MODELS, PUBLIC_MODELS } from "./catalog.js";
-import { pollinationsModel, refreshFreeModels, resolveUpstream, resolveBestCodeModel, getFreePool } from "./mapper.js";
-import { initDb, getUserChats, saveUserChat, deleteUserChat, findUserById } from "./db.js";
+import { findModel, PUBLIC_IMAGE_MODELS, PUBLIC_MODELS, CATALOG } from "./catalog.js";
+import { pollinationsModel, refreshFreeModels, resolveUpstream, resolveBestCodeModel, getFreePool, getModelMaxTokens } from "./mapper.js";
+import {
+  initDb,
+  getUserChats,
+  saveUserChat,
+  deleteUserChat,
+  findUserById,
+  saveApiKey,
+  getUserApiKeys,
+  deleteApiKey,
+  logApiUsage,
+  getApiUsageAnalytics,
+} from "./db.js";
 import {
   authMiddleware,
   setupAuthRoutes,
@@ -14,6 +25,8 @@ import {
   generateAuthorizationCode,
   verifyAuthorizationCode,
   generateToken,
+  generateApiKey,
+  apiKeyAuthMiddleware,
   MCP_CLIENT_ID,
   FRONTEND_URL,
 } from "./auth.js";
@@ -1239,6 +1252,368 @@ app.get(["/api/mcp/sse", "/sse"], (req, res) => {
   req.on("close", () => {
     clearInterval(interval);
   });
+});
+
+// =========================================================================
+// ── ORYXGEN AI DEVELOPER PLATFORM & API KEY MANAGEMENT ──
+// =========================================================================
+
+// 1. List user API keys
+app.get("/api/keys", authMiddleware, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Avtorizatsiyadan o'tilmagan" });
+  try {
+    const keys = await getUserApiKeys(req.user.id);
+    res.json({ ok: true, keys });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Generate new API key
+app.post("/api/keys", authMiddleware, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Avtorizatsiyadan o'tilmagan" });
+  try {
+    const { name } = req.body || {};
+    const keyData = generateApiKey("oryx_live_");
+    const record = await saveApiKey({
+      userId: req.user.id,
+      keyHash: keyData.keyHash,
+      keyPrefix: keyData.keyPrefix,
+      name: name || "Default Key",
+    });
+    // Return full raw key once so user can copy it
+    res.json({
+      ok: true,
+      key: {
+        ...record,
+        rawKey: keyData.rawKey,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Revoke API key
+app.delete("/api/keys/:id", authMiddleware, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Avtorizatsiyadan o'tilmagan" });
+  try {
+    await deleteApiKey(req.params.id, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Token analytics for 3D & animated chart dashboard
+app.get("/api/keys/analytics", authMiddleware, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Avtorizatsiyadan o'tilmagan" });
+  try {
+    const stats = await getApiUsageAnalytics(req.user.id);
+    res.json({ ok: true, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// ── OPENAI-COMPATIBLE PUBLIC DEVELOPER GATEWAY (/v1/...) ──
+// =========================================================================
+
+// GET /v1/models (Lists 200+ models in standard OpenAI JSON format)
+app.get("/v1/models", (req, res) => {
+  const modelsList = CATALOG.map((m) => ({
+    id: m.id,
+    object: "model",
+    created: 1720000000,
+    owned_by: m.company || "oryxgen",
+    permission: [],
+    root: m.id,
+    display_name: m.displayName,
+    capability: m.capability,
+    description: m.description,
+    tags: m.tags || [],
+  }));
+
+  res.json({
+    object: "list",
+    data: modelsList,
+  });
+});
+
+// POST /v1/chat/completions (OpenAI-compatible chat completion & streaming)
+app.post("/v1/chat/completions", apiKeyAuthMiddleware, async (req, res) => {
+  const startTime = Date.now();
+  const {
+    model: requestedModel = "gpt-6-astra",
+    messages = [],
+    temperature = 0.7,
+    max_tokens = null,
+    stream = false,
+  } = req.body || {};
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({
+      error: {
+        message: "Kamida bitta xabar (messages) yuborilishi shart.",
+        type: "invalid_request_error",
+        param: "messages",
+        code: "missing_messages",
+      },
+    });
+  }
+
+  // Find model metadata in catalog
+  const catalogModel = findModel(requestedModel) || {
+    id: requestedModel,
+    displayName: requestedModel,
+    company: "Oryxgen AI",
+    capability: "chat",
+  };
+
+  // Enforce Oryxgen persona injection so models never reveal raw open-source backend names
+  const brandSystemMessage = {
+    role: "system",
+    content: `You are ${catalogModel.displayName}, an advanced artificial intelligence model developed by ${catalogModel.company || "Oryxgen AI"} and powered by the Oryxgen AI platform.
+CRITICAL IDENTITY INSTRUCTIONS:
+- Whenever asked who you are, what model you are, or who created you, you must declare that you are "${catalogModel.displayName}" developed by ${catalogModel.company || "Oryxgen AI"} on Oryxgen AI.
+- NEVER claim or state that you are an open-source model (such as Llama, Qwen, Mistral, Gemma, Nemotron, DeepSeek) or mention OpenRouter/Pollinations proxy infrastructure, unless that is your official identity.
+- Provide comprehensive, accurate, high-quality answers and code.`,
+  };
+
+  const finalMessages = [brandSystemMessage, ...messages];
+
+  // Resolve upstream fallback models
+  const modelChain = resolveUpstream(requestedModel);
+  let targetTokens = max_tokens || getModelMaxTokens(modelChain[0] || requestedModel);
+
+  // If streaming is requested
+  if (stream) {
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    let fullGeneratedText = "";
+
+    try {
+      const upstreamRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OR_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://avg-ai-creator.site",
+          "X-Title": "Oryxgen AI Gateway",
+        },
+        body: JSON.stringify({
+          model: modelChain[0],
+          messages: finalMessages,
+          temperature,
+          max_tokens: targetTokens,
+          stream: true,
+        }),
+      });
+
+      if (!upstreamRes.ok || !upstreamRes.body) {
+        throw new Error(`Upstream API failed with status ${upstreamRes.status}`);
+      }
+
+      const reader = upstreamRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("data: ")) {
+            const dataStr = trimmed.slice(6);
+            if (dataStr === "[DONE]") {
+              res.write("data: [DONE]\n\n");
+            } else {
+              try {
+                const parsed = JSON.parse(dataStr);
+                const deltaContent = parsed.choices?.[0]?.delta?.content || "";
+                if (deltaContent) fullGeneratedText += deltaContent;
+                res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+              } catch {
+                res.write(`${trimmed}\n\n`);
+              }
+            }
+          }
+        }
+      }
+
+      res.end();
+
+      // Estimate tokens and log usage
+      const inTokens = Math.ceil(JSON.stringify(messages).length / 4);
+      const outTokens = Math.ceil(fullGeneratedText.length / 4);
+      const durationMs = Date.now() - startTime;
+      await logApiUsage({
+        keyPrefix: req.apiKey.key_prefix,
+        userId: req.user.id,
+        model: catalogModel.displayName,
+        inputTokens: inTokens,
+        outputTokens: outTokens,
+        durationMs,
+      });
+    } catch (err) {
+      console.error("Stream completion error:", err.message);
+      res.write(`data: {"error": "${err.message}"}\n\n`);
+      res.end();
+    }
+    return;
+  }
+
+  // Non-streaming completion
+  let completionContent = "";
+  let lastErr = null;
+
+  for (const upstreamModel of modelChain) {
+    try {
+      let resUpstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OR_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://avg-ai-creator.site",
+          "X-Title": "Oryxgen AI Gateway",
+        },
+        body: JSON.stringify({
+          model: upstreamModel,
+          messages: finalMessages,
+          temperature,
+          max_tokens: targetTokens,
+        }),
+      });
+
+      if (!resUpstream.ok && resUpstream.status === 400) {
+        const errText = await resUpstream.text().catch(() => "");
+        if (/max_tokens|token limit|exceed/i.test(errText)) {
+          const matchNum = errText.match(/(?:maximum|limit|allowed|max_tokens is|up to)\s*(\d+)/i);
+          targetTokens = matchNum ? parseInt(matchNum[1], 10) : 8192;
+          resUpstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${OR_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: upstreamModel,
+              messages: finalMessages,
+              temperature,
+              max_tokens: targetTokens,
+            }),
+          });
+        }
+      }
+
+      if (resUpstream.ok) {
+        const data = await resUpstream.json();
+        completionContent = data.choices?.[0]?.message?.content || "";
+        if (completionContent) break;
+      } else {
+        lastErr = new Error(`Model ${upstreamModel} xatosi: ${resUpstream.status}`);
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (!completionContent) {
+    return res.status(502).json({
+      error: {
+        message: `Barcha neyron tarmoq kanallari band: ${lastErr?.message || "Noma'lum xatolik"}. Proxy orqali qayta urinib ko'ring.`,
+        type: "api_connection_error",
+        code: "all_upstreams_exhausted",
+      },
+    });
+  }
+
+  const inTokens = Math.ceil(JSON.stringify(messages).length / 4);
+  const outTokens = Math.ceil(completionContent.length / 4);
+  const durationMs = Date.now() - startTime;
+
+  await logApiUsage({
+    keyPrefix: req.apiKey.key_prefix,
+    userId: req.user.id,
+    model: catalogModel.displayName,
+    inputTokens: inTokens,
+    outputTokens: outTokens,
+    durationMs,
+  });
+
+  return res.json({
+    id: `chatcmpl-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model: catalogModel.id,
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: completionContent,
+        },
+        finish_reason: "stop",
+      },
+    ],
+    usage: {
+      prompt_tokens: inTokens,
+      completion_tokens: outTokens,
+      total_tokens: inTokens + outTokens,
+    },
+  });
+});
+
+// POST /v1/codex/generate (Autonomous multi-file project scaffolding via API/CLI)
+app.post("/v1/codex/generate", apiKeyAuthMiddleware, async (req, res) => {
+  const { prompt } = req.body || {};
+  if (!prompt || !prompt.trim()) {
+    return res.status(400).json({ error: "Prompt kiritilishi shart." });
+  }
+
+  try {
+    const result = await executeCodexPipeline(prompt, OR_KEY);
+    const inTokens = Math.ceil(prompt.length / 4);
+    const outTokens = Math.ceil(JSON.stringify(result.projectFiles).length / 4);
+
+    await logApiUsage({
+      keyPrefix: req.apiKey.key_prefix,
+      userId: req.user.id,
+      model: "CodeX Engine",
+      inputTokens: inTokens,
+      outputTokens: outTokens,
+      durationMs: 3000,
+    });
+
+    res.json({
+      ok: true,
+      plan: result.plan,
+      files: result.projectFiles,
+      summary: result.plan?.summary,
+      totalFiles: Object.keys(result.projectFiles).length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /v1/analytics/usage (API-level token metrics)
+app.get("/v1/analytics/usage", apiKeyAuthMiddleware, async (req, res) => {
+  try {
+    const stats = await getApiUsageAnalytics(req.user.id);
+    res.json({ ok: true, stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Start initial scan of free models

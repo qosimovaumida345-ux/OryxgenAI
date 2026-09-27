@@ -351,3 +351,46 @@ export async function completeMcpAuthorize({ redirectUri, codeChallenge, codeCha
   if (!res.ok) throw new Error(data.error_description || data.error || "MCP ulanishni yakunlab bo'lmadi.");
   return data;
 }
+
+// ── Developer API Platform & Token Analytics Helpers ──
+
+export async function fetchApiKeys() {
+  try {
+    const res = await fetch(`${API}/api/keys`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.keys || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createApiKey(name = "Default Key") {
+  const res = await fetch(`${API}/api/keys`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ name }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "API kalit yaratib bo'lmadi");
+  return data.key;
+}
+
+export async function revokeApiKey(keyId) {
+  const res = await fetch(`${API}/api/keys/${keyId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  return res.ok;
+}
+
+export async function fetchApiAnalytics() {
+  try {
+    const res = await fetch(`${API}/api/keys/analytics`, { headers: authHeaders() });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.stats || null;
+  } catch {
+    return null;
+  }
+}

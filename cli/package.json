@@ -1,0 +1,28 @@
+{
+  "name": "oryxgen-cli",
+  "version": "1.0.0",
+  "description": "Official Oryxgen AI CLI - 200+ Models, 250+ Autonomous Agents & Neural CodeX Engine",
+  "main": "bin/oryxgen.js",
+  "type": "module",
+  "bin": {
+    "oryxgen": "./bin/oryxgen.js",
+    "oryxgen-cli": "./bin/oryxgen.js"
+  },
+  "keywords": [
+    "ai",
+    "cli",
+    "oryxgen",
+    "gpt-6",
+    "claude-4",
+    "codex",
+    "agents",
+    "coding",
+    "autonomous-agent",
+    "developer-tools"
+  ],
+  "author": "Oryxgen AI Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

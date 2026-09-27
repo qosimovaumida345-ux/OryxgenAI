@@ -20,6 +20,7 @@ import AuthModal from "./AuthModal";
 import LoadingScreen from "./LoadingScreen";
 import { CompanyLogo } from "./Logos";
 import StructureViewer, { isDirectoryTreeCode } from "./StructureViewer";
+import ApiPlatformModal from "./ApiPlatformModal";
 import "./Chat.css";
 
 const DEFAULT_MODEL = "claude-4.6-opus";
@@ -378,6 +379,7 @@ export default function Chat() {
 
   const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
   const [mcpCopied, setMcpCopied] = useState(false);
+  const [isApiModalOpen, setIsApiModalOpen] = useState(false);
 
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [searchModel, setSearchModel] = useState("");
@@ -1079,6 +1081,14 @@ export default function Chat() {
               >
                 MCP Gateway
               </button>
+              <button
+                type="button"
+                className="nav-btn-action nav-btn-api"
+                onClick={() => setIsApiModalOpen(true)}
+                title="Oryxgen AI Developer Platform & NPM CLI"
+              >
+                ⚡ API Platformasi
+              </button>
               <Link to="/image" className="nav-btn-action">
                 Tasvir
               </Link>
@@ -1566,6 +1576,12 @@ export default function Chat() {
           </div>
         </div>
       )}
+
+      {/* Developer Platform & API Key Management Modal */}
+      <ApiPlatformModal
+        isOpen={isApiModalOpen}
+        onClose={() => setIsApiModalOpen(false)}
+      />
 
       {/* Authentication Modal - Guard */}
       <AuthModal
