@@ -19,6 +19,7 @@ import CodeXWorkspace from "./CodeXWorkspace";
 import AuthModal from "./AuthModal";
 import LoadingScreen from "./LoadingScreen";
 import { CompanyLogo } from "./Logos";
+import StructureViewer, { isDirectoryTreeCode } from "./StructureViewer";
 import "./Chat.css";
 
 const DEFAULT_MODEL = "claude-4.6-opus";
@@ -148,10 +149,54 @@ function buildSandboxHtml(files) {
   `;
 }
 
-// Comprehensive Markdown-to-HTML parser supporting bold, italics, code, headings, blockquotes, lists, and links
+// Comprehensive Markdown-to-HTML parser supporting tables, bold, italics, code, headings, blockquotes, lists, and links
 function renderMarkdown(text) {
   if (!text) return "";
-  let html = text
+
+  // Extract and convert tables first to protect from raw line breaks
+  const tables = [];
+  let processed = text;
+
+  if (processed.includes("|")) {
+    const lines = processed.split("\n");
+    const newLines = [];
+    let inTable = false;
+    let tableLines = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
+      const trimmed = rawLine.trim();
+
+      const isTableRow = trimmed.length > 2 &&
+        (trimmed.startsWith("|") || (trimmed.includes("|") && trimmed.indexOf("|") !== trimmed.lastIndexOf("|"))) &&
+        !trimmed.startsWith("```");
+
+      if (isTableRow) {
+        inTable = true;
+        tableLines.push(trimmed);
+      } else {
+        if (inTable) {
+          const ph = `XYZTABLETOKEN${tables.length}XYZ`;
+          tables.push(convertTableLinesToHtml(tableLines));
+          tableLines = [];
+          inTable = false;
+          newLines.push(ph);
+        }
+        newLines.push(rawLine);
+      }
+    }
+
+    if (inTable && tableLines.length > 0) {
+      const ph = `XYZTABLETOKEN${tables.length}XYZ`;
+      tables.push(convertTableLinesToHtml(tableLines));
+      newLines.push(ph);
+    }
+
+    processed = newLines.join("\n");
+  }
+
+  // HTML escaping for text
+  let html = processed
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
@@ -169,7 +214,7 @@ function renderMarkdown(text) {
     .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
 
-  // Bold & Italic (handles ** bold **, **bold**, __bold__, ***bold italic***)
+  // Bold & Italic
   html = html
     .replace(/\*\*\*([^*]+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/___([^_]+?)___/g, '<strong><em>$1</em></strong>')
@@ -179,7 +224,7 @@ function renderMarkdown(text) {
     .replace(/(?<!_)_([^_]+?)_(?!_)/g, '<em>$1</em>')
     .replace(/~~([^~]+?)~~/g, '<del>$1</del>');
 
-  // Blockquotes (accounting for escaped > -> &gt;)
+  // Blockquotes
   html = html.replace(/^&gt;\s?(.*)$/gm, '<blockquote class="md-quote">$1</blockquote>');
 
   // Lists
@@ -198,7 +243,66 @@ function renderMarkdown(text) {
     .replace(/\n\n/g, '<div class="md-break"></div>')
     .replace(/\n/g, '<br>');
 
+  // Restore tables
+  tables.forEach((tblHtml, idx) => {
+    html = html.replace(`XYZTABLETOKEN${idx}XYZ`, tblHtml);
+  });
+
   return html;
+}
+
+function convertTableLinesToHtml(lines) {
+  if (lines.length < 2) return lines.join("\n");
+
+  const parseCells = (l) => {
+    let clean = l.trim();
+    if (clean.startsWith("|")) clean = clean.substring(1);
+    if (clean.endsWith("|")) clean = clean.substring(0, clean.length - 1);
+    return clean.split("|").map((c) => c.trim());
+  };
+
+  const headerCells = parseCells(lines[0]);
+  const delimiterCells = parseCells(lines[1]);
+
+  const isDelimiter = delimiterCells.every((c) => /^:?-+:?$/.test(c.replace(/\s+/g, "")));
+  if (!isDelimiter) {
+    return lines.join("\n");
+  }
+
+  const alignments = delimiterCells.map((c) => {
+    const trimmed = c.replace(/\s+/g, "");
+    if (trimmed.startsWith(":") && trimmed.endsWith(":")) return "center";
+    if (trimmed.endsWith(":")) return "right";
+    return "left";
+  });
+
+  const formatInline = (cellText) => {
+    let t = cellText
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    t = t.replace(/`([^`]+?)`/g, '<code class="md-inline-code">$1</code>');
+    t = t.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+    return t;
+  };
+
+  const thead = `<thead><tr>${headerCells
+    .map((h, idx) => `<th style="text-align:${alignments[idx] || "left"}">${formatInline(h)}</th>`)
+    .join("")}</tr></thead>`;
+
+  const bodyRows = lines
+    .slice(2)
+    .map((rowLine) => {
+      const cells = parseCells(rowLine);
+      const tds = cells
+        .map((c, idx) => `<td style="text-align:${alignments[idx] || "left"}">${formatInline(c)}</td>`)
+        .join("");
+      return `<tr>${tds}</tr>`;
+    })
+    .join("");
+
+  return `<div class="md-table-wrapper"><table class="md-table">${thead}<tbody>${bodyRows}</tbody></table></div>`;
 }
 
 // Helper to extract embedded <think>...</think> or <thought>...</thought> tags from content
@@ -1104,6 +1208,19 @@ export default function Chat() {
                               const lang = lines[0].trim() || "code";
                               const code = lines.slice(1).join("\n");
                               const codeId = `${m.id}-${idx}`;
+
+                              if (isDirectoryTreeCode(code)) {
+                                return (
+                                  <StructureViewer
+                                    key={codeId}
+                                    code={code}
+                                    lang={lang}
+                                    codeId={codeId}
+                                    onCopy={copyCode}
+                                  />
+                                );
+                              }
+
                               return (
                                 <div key={codeId} className="code-block-box">
                                   <div className="code-block-header">

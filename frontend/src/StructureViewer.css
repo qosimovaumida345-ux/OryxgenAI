@@ -1,0 +1,470 @@
+/* StructureViewer.css - Premium Architecture & Directory Tree Visualizer */
+
+.structure-explorer-card {
+  margin: 16px 0;
+  background: #0c0d12;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 1px rgba(255, 255, 255, 0.15);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.structure-explorer-card:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 20px rgba(56, 189, 248, 0.08);
+}
+
+/* Header Bar */
+.structure-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.structure-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.structure-badge-glow {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2));
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+.structure-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.structure-main-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.structure-meta-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.structure-root-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+
+.structure-count-tag {
+  font-size: 10.5px;
+  color: #94a3b8;
+}
+
+.structure-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* View Mode Switcher */
+.structure-mode-toggle {
+  display: flex;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.mode-toggle-btn:hover {
+  color: #f1f5f9;
+}
+
+.mode-toggle-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Copy button */
+.structure-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.structure-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.copy-check-icon {
+  color: #10b981;
+}
+
+/* Selectors / Category Pills Toolbar */
+.structure-selectors-toolbar {
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.structure-category-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category-pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.category-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+.category-pill-btn.active {
+  background: var(--cat-bg, rgba(56, 189, 248, 0.18)) !important;
+  border-color: var(--cat-color, #38bdf8) !important;
+  color: var(--cat-color, #38bdf8) !important;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+/* Search input */
+.structure-search-box {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.search-icon {
+  color: #64748b;
+}
+
+.structure-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 11.5px;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.structure-search-input::placeholder {
+  color: #64748b;
+}
+
+.search-clear-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 3px;
+}
+
+.search-clear-btn:hover {
+  color: #f1f5f9;
+}
+
+/* Tree Viewport */
+.structure-tree-viewport {
+  padding: 10px 0;
+  max-height: 480px;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: rgba(8, 9, 13, 0.95);
+  position: relative;
+}
+
+.structure-tree-viewport::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.structure-tree-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+/* Tree Row */
+.tree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px 5px 0;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 2px solid transparent;
+  animation: treeRowFadeIn 0.25s ease forwards;
+}
+
+@keyframes treeRowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tree-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateX(3px);
+  border-left-color: rgba(56, 189, 248, 0.6);
+}
+
+.tree-row.dimmed-row {
+  opacity: 0.22;
+  filter: grayscale(80%);
+}
+
+.tree-row.highlighted-row {
+  opacity: 1;
+}
+
+.tree-row:hover .tree-quick-copy-btn {
+  opacity: 1;
+}
+
+/* Indent guide line */
+.tree-guide-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+/* Node Main (Icon + Name) */
+.tree-node-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.tree-node-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tree-icon-folder {
+  color: #f59e0b;
+}
+
+.tree-icon-react {
+  color: #38bdf8;
+}
+
+.tree-icon-ts {
+  color: #3b82f6;
+}
+
+.tree-icon-js {
+  color: #eab308;
+}
+
+.tree-icon-json {
+  color: #f97316;
+}
+
+.tree-icon-db {
+  color: #818cf8;
+}
+
+.tree-icon-docker {
+  color: #0ea5e9;
+}
+
+.tree-icon-git {
+  color: #f97316;
+}
+
+.tree-icon-css {
+  color: #ec4899;
+}
+
+.tree-icon-doc {
+  color: #94a3b8;
+}
+
+.tree-icon-file {
+  color: #64748b;
+}
+
+/* Node Name */
+.tree-node-name {
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tree-node-name.dir-name {
+  color: #f1f5f9;
+  font-weight: 700;
+}
+
+.tree-node-name.file-name {
+  color: #cbd5e1;
+  font-weight: 400;
+}
+
+/* Node Meta (Category Badge + Comment) */
+.tree-node-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+/* Category Badge */
+.tree-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Comment / Description Badge */
+.tree-comment-badge {
+  font-size: 11px;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1.5px 8px;
+  border-radius: 4px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Quick copy button */
+.tree-quick-copy-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-quick-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+/* Raw Code Pre */
+.structure-raw-pre {
+  padding: 14px 18px;
+  margin: 0;
+  max-height: 480px;
+  overflow: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #f1f5f9;
+  background: #090a0f;
+}
