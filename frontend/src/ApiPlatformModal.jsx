@@ -228,6 +228,39 @@ export default function ApiPlatformModal({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* Quick CLI Command Bar */}
+        <div className="api-quick-cli-bar">
+          <div className="quick-cli-item">
+            <Terminal size={14} className="quick-term-icon" />
+            <span className="quick-cli-label">O'rnatish:</span>
+            <code className="quick-cli-code">npm install -g oryxgen</code>
+            <button
+              type="button"
+              className="quick-copy-icon-btn"
+              onClick={() => copyToClipboard("npm install -g oryxgen", "top-npm")}
+              title="O'rnatish kodini nusxalash"
+            >
+              {copiedKeyId === "top-npm" ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+              <span>{copiedKeyId === "top-npm" ? "Nusxalandi" : "Nusxalash"}</span>
+            </button>
+          </div>
+          <div className="quick-cli-sep">|</div>
+          <div className="quick-cli-item">
+            <Zap size={14} className="quick-zap-icon" />
+            <span className="quick-cli-label">Tezkor Ishga Tushirish:</span>
+            <code className="quick-cli-code">npx oryxgen</code>
+            <button
+              type="button"
+              className="quick-copy-icon-btn"
+              onClick={() => copyToClipboard("npx oryxgen", "top-npx")}
+              title="Ishga tushirish kodini nusxalash"
+            >
+              {copiedKeyId === "top-npx" ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+              <span>{copiedKeyId === "top-npx" ? "Nusxalandi" : "Nusxalash"}</span>
+            </button>
+          </div>
+        </div>
+
         {/* Navigation Tabs */}
         <div className="api-modal-tabs">
           <button
@@ -567,7 +600,7 @@ main();`}</code>
                 <span className="term-dot red" />
                 <span className="term-dot yellow" />
                 <span className="term-dot green" />
-                <span className="term-title">bash — oryxgen-cli (Neural Terminal Engine)</span>
+                <span className="term-title">bash — oryxgen (Neural Terminal Engine)</span>
               </div>
               <div className="cli-terminal-body">
                 <pre className="cli-ascii-art">
@@ -579,9 +612,9 @@ main();`}</code>
    ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝    ╚═╝  ╚═╝╚═╝`}
                 </pre>
                 <div className="cli-term-line">
-                  <span className="prompt-sym">$</span> npm install -g oryxgen-cli
+                  <span className="prompt-sym">$</span> npm install -g oryxgen
                 </div>
-                <div className="cli-term-out">✓ Installed oryxgen-cli globally in 1.4s</div>
+                <div className="cli-term-out">✓ Installed oryxgen globally in 1.4s</div>
                 <div className="cli-term-line">
                   <span className="prompt-sym">$</span> oryxgen auth oryx_live_xxxxxxxxxxxx
                 </div>
@@ -598,11 +631,11 @@ main();`}</code>
               <div className="install-card">
                 <span className="install-label">1. Global O'rnatish (Tavsiya etiladi):</span>
                 <div className="install-command-box">
-                  <code>npm install -g oryxgen-cli</code>
+                  <code>npm install -g oryxgen</code>
                   <button
                     type="button"
                     className="copy-cmd-btn"
-                    onClick={() => copyToClipboard("npm install -g oryxgen-cli", "npm-inst")}
+                    onClick={() => copyToClipboard("npm install -g oryxgen", "npm-inst")}
                   >
                     {copiedKeyId === "npm-inst" ? <Check size={13} /> : <Copy size={13} />}
                   </button>
@@ -612,11 +645,11 @@ main();`}</code>
               <div className="install-card">
                 <span className="install-label">2. O'rnatmasdan Ishlatish (NPX):</span>
                 <div className="install-command-box">
-                  <code>npx oryxgen-cli</code>
+                  <code>npx oryxgen</code>
                   <button
                     type="button"
                     className="copy-cmd-btn"
-                    onClick={() => copyToClipboard("npx oryxgen-cli", "npx-run")}
+                    onClick={() => copyToClipboard("npx oryxgen", "npx-run")}
                   >
                     {copiedKeyId === "npx-run" ? <Check size={13} /> : <Copy size={13} />}
                   </button>

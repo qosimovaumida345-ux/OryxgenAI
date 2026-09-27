@@ -18,12 +18,12 @@
 
 ### 1. Global O'rnatish (Tavsiya etiladi):
 ```bash
-npm install -g oryxgen-cli
+npm install -g oryxgen
 ```
 
 ### 2. O'rnatmasdan to'g'ridan-to'g'ri ishlatish (NPX):
 ```bash
-npx oryxgen-cli
+npx oryxgen
 ```
 
 ---
