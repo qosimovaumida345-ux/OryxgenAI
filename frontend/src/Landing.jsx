@@ -1,11 +1,24 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { getAuthToken, getStoredUser } from "./api";
 import "./Landing.css";
 
 const HERO_SRC =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260818_072341_50851634-bbc3-4c33-9acc-7647d4db44aa.mp4";
 
 export default function Landing() {
+  const navigate = useNavigate();
+
+  // Auto-redirect to /app if already logged in
+  useEffect(() => {
+    const token = getAuthToken();
+    const user = getStoredUser();
+    if (token && user) {
+      navigate("/app", { replace: true });
+      return;
+    }
+  }, [navigate]);
+
   useEffect(() => {
     const appears = [...document.querySelectorAll(".appear")];
     const onEnd = (e) => e.currentTarget.classList.add("is-in");
@@ -113,7 +126,7 @@ export default function Landing() {
               </span>
             </h1>
             <p className="lede appear appear--soft" style={{ "--d": "0.82s" }}>
-              Claude 4.6, GPT-5, DeepSeek R1, Grok 4.6 va Gemini 3.5 modellaridan cheksiz foydalaning. Shaxsiy MCP server orqali Claude va Cursor bilan ulang.
+              Claude 5 Opus, GPT-6 Astra, DeepSeek R1, Grok 4.6, Gemini 3.8 va 200+ modellardan cheksiz foydalaning. Shaxsiy MCP server orqali Claude va Cursor bilan ulang.
             </p>
             <div className="hero-actions">
               <Link className="btn btn-solid appear appear--btn" to="/app" style={{ "--d": "0.96s" }}>

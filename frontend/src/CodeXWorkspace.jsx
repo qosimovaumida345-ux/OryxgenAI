@@ -8,24 +8,56 @@ export function buildMultiFileSandboxHtml(files = {}) {
     return `<!DOCTYPE html><html><body style="background:#09090b;color:#71717a;display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3f3f46" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg><p style="margin-top:14px;font-size:14px;">Loyiha fayllari hali mavjud emas. CodeX orqali biror g'oya bering.</p></body></html>`;
   }
 
-  // 1. Identify main entry file and CSS files
-  const mainFileKey = fileKeys.find(
-    (k) => k.endsWith("App.jsx") || k.endsWith("App.js") || k.endsWith("index.jsx") || k.endsWith("index.html")
-  ) || fileKeys[0];
+  // Pure HTML mode
+  const indexHtmlKey = fileKeys.find((k) => k.endsWith("index.html"));
+  if (indexHtmlKey && !files[indexHtmlKey].includes("export default") && !files[indexHtmlKey].includes("ReactDOM")) {
+    return files[indexHtmlKey];
+  }
 
+  // 1. Gather all CSS
   const customCss = Object.entries(files)
     .filter(([name]) => name.endsWith(".css"))
     .map(([, content]) => content)
     .join("\n");
 
-  // Pure HTML mode
-  if (mainFileKey.endsWith(".html") && !files[mainFileKey].includes("export default") && !files[mainFileKey].includes("React")) {
-    return files[mainFileKey];
-  }
+  // 2. Identify and order code files:
+  // Order: utils/data -> hooks -> context -> components -> App.jsx (root last)
+  const codeEntries = Object.entries(files).filter(
+    ([name]) => /\.(jsx?|tsx?)$/i.test(name) && !name.endsWith(".d.ts")
+  );
 
-  // 2. Prepare all JS/JSX files into a bundle registry
-  // Escape backticks and template literals safely for inlined script
-  const serializedFiles = JSON.stringify(files);
+  const scoreFile = (path) => {
+    const lower = path.toLowerCase();
+    if (lower.includes("app.jsx") || lower.includes("app.js") || lower.endsWith("main.jsx")) return 100;
+    if (lower.includes("component")) return 50;
+    if (lower.includes("context") || lower.includes("store")) return 30;
+    if (lower.includes("hook")) return 20;
+    if (lower.includes("util") || lower.includes("data") || lower.includes("mock")) return 10;
+    return 40;
+  };
+
+  codeEntries.sort((a, b) => scoreFile(a[0]) - scoreFile(b[0]));
+
+  // 3. Transform and concatenate code files into a single unified script block
+  const transformedModules = codeEntries.map(([path, code]) => {
+    // Strip imports and adjust exports for global browser execution
+    let transformed = code
+      // Strip import statements
+      .replace(/import\s+React(?:,\s*\{[^}]*\})?\s+from\s+['"][^'"]+['"];?/g, "")
+      .replace(/import\s+['"][^'"]+['"];?/g, "")
+      .replace(/import\s+([A-Za-z0-9_]+)\s+from\s+['"][^'"]+['"];?/g, "")
+      .replace(/import\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?/g, "")
+      .replace(/import\s+\*\s+as\s+[A-Za-z0-9_]+\s+from\s+['"][^'"]+['"];?/g, "")
+      // Convert exports to declarations
+      .replace(/export\s+default\s+function\s+([A-Za-z0-9_]+)/g, "function $1")
+      .replace(/export\s+default\s+([A-Za-z0-9_]+);?/g, "/* export default $1 */")
+      .replace(/export\s+const\s+/g, "const ")
+      .replace(/export\s+function\s+/g, "function ")
+      .replace(/export\s+class\s+/g, "class ")
+      .replace(/export\s+/g, "");
+
+    return `\n// --- File: ${path} ---\n${transformed}\n`;
+  }).join("\n");
 
   return `
     <!DOCTYPE html>
@@ -49,68 +81,39 @@ export function buildMultiFileSandboxHtml(files = {}) {
       <div id="root"></div>
       <script type="text/babel">
         try {
-          const projectFiles = ${serializedFiles};
-          const moduleRegistry = {};
+          const { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } = React;
 
-          // Helper to normalize relative import paths
-          function resolveModulePath(currentPath, importPath) {
-            if (!importPath.startsWith('.')) return importPath;
-            const parts = currentPath.split('/');
-            parts.pop(); // remove current filename
-            const segs = importPath.split('/');
-            for (const seg of segs) {
-              if (seg === '.') continue;
-              if (seg === '..') parts.pop();
-              else parts.push(seg);
+          // Common Lucide/Feather icon stubs to prevent ReferenceError on unbundled icons
+          const ICON_NAMES = [
+            "ShoppingCart", "Search", "Menu", "X", "Trash2", "Trash", "Plus", "Minus", "Star",
+            "Heart", "Check", "ArrowRight", "ArrowLeft", "ChevronDown", "ChevronUp", "Filter",
+            "Sliders", "User", "Settings", "Shield", "Zap", "Sun", "Moon", "Eye", "EyeOff",
+            "Share", "Download", "Upload", "Globe", "Mail", "Phone", "Lock", "Unlock", "Clock",
+            "Calendar", "Tag", "ShoppingBag", "CheckCircle", "AlertCircle", "HelpCircle", "Sparkles", "Copy"
+          ];
+          ICON_NAMES.forEach(name => {
+            if (typeof window[name] === 'undefined') {
+              window[name] = (props) => React.createElement('span', {
+                ...props,
+                className: 'inline-flex items-center justify-center ' + (props.className || '')
+              }, name === 'Star' ? '★' : name === 'Heart' ? '♥' : name.includes('Shopping') ? '🛒' : name.includes('Check') ? '✓' : name === 'Search' ? '🔍' : name.includes('Trash') ? '🗑️' : name === 'Plus' ? '+' : name === 'Minus' ? '−' : name === 'X' ? '✕' : name === 'Menu' ? '☰' : '•');
             }
-            const base = parts.join('/');
-            // Try with extensions
-            for (const ext of ['', '.jsx', '.js', '.tsx', '.ts', '.css']) {
-              const candidate = base + ext;
-              if (projectFiles[candidate] !== undefined) return candidate;
-              const srcCandidate = 'src/' + base + ext;
-              if (projectFiles[srcCandidate] !== undefined) return srcCandidate;
-            }
-            return base;
-          }
+          });
 
-          // Compile each file
-          for (const [filePath, code] of Object.entries(projectFiles)) {
-            if (filePath.endsWith('.css') || filePath.endsWith('.json') || filePath.endsWith('.md')) continue;
+          // Concatenated project modules
+          ${transformedModules}
 
-            // Strip imports and standard exports for simple browser execution
-            let transformed = code
-              .replace(/import\\s+React(?:,\\s*\\{[^}]*\\})?\\s+from\\s+['"][^'"]+['"];?/g, '')
-              .replace(/import\\s+['"][^'"]+['"];?/g, '')
-              .replace(/import\\s+([A-Za-z0-9_]+)\\s+from\\s+['"][^'"]+['"];?/g, '')
-              .replace(/import\\s+\\{([^}]+)\\}\\s+from\\s+['"][^'"]+['"];?/g, '')
-              .replace(/export\\s+default\\s+function\\s+([A-Za-z0-9_]+)/g, 'function $1')
-              .replace(/export\\s+default\\s+([A-Za-z0-9_]+);?/g, '')
-              .replace(/export\\s+const\\s+/g, 'const ')
-              .replace(/export\\s+function\\s+/g, 'function ')
-              .replace(/export\\s+/g, '');
-
-            try {
-              // Evaluate module in global scope
-              const transpiled = Babel.transform(transformed, { presets: ['react'] }).code;
-              const fn = new Function('React', 'useState', 'useEffect', 'useRef', 'useMemo', 'useCallback', transpiled);
-              fn(React, React.useState, React.useEffect, React.useRef, React.useMemo, React.useCallback);
-            } catch (moduleErr) {
-              console.warn("Module evaluation warning for " + filePath + ":", moduleErr);
-            }
-          }
-
-          // Find root component
+          // Locate root component
           const ComponentToRender = typeof App !== 'undefined' ? App : (typeof main !== 'undefined' ? main : null);
           if (ComponentToRender) {
             const root = ReactDOM.createRoot(document.getElementById('root'));
             root.render(<ComponentToRender />);
           } else {
-            const entryCode = projectFiles["${mainFileKey}"] || Object.values(projectFiles)[0] || "";
-            document.getElementById('root').innerHTML = \`<div style="padding:24px;font-family:sans-serif;"><h3>\${entryCode.slice(0, 100)}</h3></div>\`;
+            document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#6b7280;"><h3>Interfeys yuklandi</h3><p>App komponenti topilmadi.</p></div>';
           }
         } catch (err) {
-          document.getElementById('root').innerHTML = '<div style="color:#ef4444;background:#fef2f2;padding:24px;border:1px solid #fecaca;border-radius:12px;margin:20px;font-family:monospace;"><strong>Ishga tushirishda xatolik yuz berdi:</strong><br/><pre style="white-space:pre-wrap;margin-top:10px;">' + err.message + '</pre></div>';
+          console.error("Live Preview Sandbox Error:", err);
+          document.getElementById('root').innerHTML = '<div style="color:#ef4444;background:#fef2f2;padding:24px;border:1px solid #fecaca;border-radius:12px;margin:20px;font-family:monospace;"><strong>Ishga tushirishda xatolik:</strong><br/><pre style="white-space:pre-wrap;margin-top:10px;">' + err.message + '</pre></div>';
         }
       </script>
     </body>

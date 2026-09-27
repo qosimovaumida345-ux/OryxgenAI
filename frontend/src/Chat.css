@@ -48,12 +48,28 @@
 }
 
 .text-prose .md-inline-code {
-  background: #27272a;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
-  color: #a78bfa;
+  background: #18181b;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  color: #c084fc;
+}
+
+.text-prose .md-quote {
+  border-left: 3px solid #6366f1;
+  padding: 4px 12px;
+  margin: 6px 0;
+  color: #94a3b8;
+  font-style: italic;
+  background: rgba(99, 102, 241, 0.06);
+  border-radius: 0 6px 6px 0;
+}
+
+.text-prose del {
+  color: #71717a;
+  text-decoration: line-through;
 }
 
 .text-prose .md-li {
@@ -86,12 +102,13 @@
 }
 
 .text-prose strong {
-  font-weight: bold;
-  color: #fff;
+  font-weight: 700;
+  color: #ffffff;
 }
 
 .text-prose em {
   font-style: italic;
+  color: #e4e4e7;
 }
 
 /* Sidebar */

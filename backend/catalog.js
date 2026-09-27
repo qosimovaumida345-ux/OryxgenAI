@@ -40,6 +40,11 @@ export const CATALOG = [
   row("claude-sonnet-4", "Anthropic", "Claude Sonnet 4", "Balanced intelligence for operational workloads.", "anthropic", "chat", true, ["claude"]),
   row("claude-opus-4.1", "Anthropic", "Claude Opus 4.1", "Advanced mathematical and scientific reasoning.", "anthropic", "reason", true, ["claude", "reason"]),
   row("claude-haiku-4.5", "Anthropic", "Claude Haiku 4.5", "High throughput stream for real-time applications.", "anthropic", "chat", true, ["claude", "fast"]),
+  row("claude-4.6-haiku", "Anthropic", "Claude 4.6 Haiku", "Blazing-fast fifth-gen Haiku with 1M context window.", "anthropic", "chat", true, ["claude", "fast"]),
+  row("claude-5-sonnet", "Anthropic", "Claude 5 Sonnet", "Production-grade autonomous coding and reasoning engine.", "anthropic", "code", true, ["claude", "code", "flagship"]),
+  row("claude-5-opus", "Anthropic", "Claude 5 Opus", "Peak cognitive intelligence with deep multi-step deliberation.", "anthropic", "reason", true, ["claude", "reason", "flagship", "thinking"]),
+  row("claude-5.5-opus", "Anthropic", "Claude 5.5 Opus", "Extended deliberation with self-verification and proof chains.", "anthropic", "reason", true, ["claude", "reason", "thinking"]),
+  row("claude-fable-5.1", "Anthropic", "Claude Fable 5.1", "Creative writing and narrative synthesis specialist.", "anthropic", "chat", true, ["claude", "creative"]),
 
   // --- OPENAI / CHATGPT ---
   row("gpt-3.5-turbo", "OpenAI", "GPT-3.5 Turbo", "Fast, dependable general conversation model.", "openai", "chat"),
@@ -69,6 +74,10 @@ export const CATALOG = [
   row("chatgpt-4o", "OpenAI", "ChatGPT-4o", "Full ChatGPT 4o experience with multimodal context.", "openai", "vision"),
   row("chatgpt-4.1", "OpenAI", "ChatGPT-4.1", "ChatGPT tailored for deep multi-turn analysis.", "openai", "chat"),
   row("chatgpt-5", "OpenAI", "ChatGPT-5", "Conversational frontend to OpenAI's GPT-5 core.", "openai", "reason"),
+  row("gpt-6-astra", "OpenAI", "GPT-6 Astra", "Frontier multi-modal AGI system with autonomous tool orchestration.", "openai", "reason", false, ["flagship", "thinking"]),
+  row("gpt-6-astra-mini", "OpenAI", "GPT-6 Astra Mini", "Compact Astra variant for high-speed enterprise workloads.", "openai", "chat"),
+  row("o5", "OpenAI", "o5", "Next-generation deliberative reasoning with self-play verification.", "openai", "reason", false, ["thinking", "frontier"]),
+  row("o5-mini", "OpenAI", "o5-mini", "Fast reasoning model with automated proof checking.", "openai", "reason", false, ["thinking"]),
 
   // --- DEEPSEEK ---
   row("deepseek-v2", "DeepSeek", "DeepSeek V2", "Economical MoE model with strong benchmark scores.", "deepseek", "chat"),
@@ -85,6 +94,8 @@ export const CATALOG = [
   row("deepseek-coder-v2", "DeepSeek", "DeepSeek Coder V2", "Supports 338+ programming languages with 128k context.", "deepseek", "code"),
   row("deepseek-vl", "DeepSeek", "DeepSeek VL", "High-resolution vision-language model.", "deepseek", "vision"),
   row("deepseek-vl2", "DeepSeek", "DeepSeek VL2", "Second-gen vision MoE with document OCR capability.", "deepseek", "vision"),
+  row("deepseek-r2", "DeepSeek", "DeepSeek R2", "Second-gen open reasoning model surpassing o3-pro benchmarks.", "deepseek", "reason", false, ["thinking", "open-source"]),
+  row("deepseek-v4", "DeepSeek", "DeepSeek V4", "Trillion-parameter MoE with universal task mastery.", "deepseek", "reason"),
 
   // --- GOOGLE GEMINI ---
   row("gemini-1.0-pro", "Google", "Gemini 1.0 Pro", "First Gemini model for scalable NLP workloads.", "google", "chat"),
@@ -104,6 +115,10 @@ export const CATALOG = [
   row("gemma-2-27b", "Google", "Gemma 2 27B", "High-performance open weights model from Google DeepMind.", "google", "chat"),
   row("gemma-3-12b", "Google", "Gemma 3 12B", "Third-gen Gemma with native vision and coding support.", "google", "chat"),
   row("gemma-4-31b", "Google", "Gemma 4 31B", "Next-gen open architecture with near-frontier performance.", "google", "reason"),
+  row("gemini-3.8-flash", "Google", "Gemini 3.8 Flash", "Ultra-fast hybrid reasoning with real-time tool execution.", "google", "chat", false, ["fast", "thinking"]),
+  row("gemini-3.8-pro", "Google", "Gemini 3.8 Pro", "Frontier multi-modal with 8M context and deep synthesis.", "google", "reason", false, ["thinking", "flagship"]),
+  row("gemini-4-flash", "Google", "Gemini 4 Flash", "Fourth-gen Flash with native agent orchestration.", "google", "chat"),
+  row("gemini-4-pro", "Google", "Gemini 4 Pro", "Peak Google AI reasoning and autonomous research.", "google", "reason", false, ["flagship"]),
 
   // --- XAI GROK ---
   row("grok-1", "xAI", "Grok-1", "Open 314B MoE foundation model.", "xai", "chat"),
@@ -115,6 +130,8 @@ export const CATALOG = [
   row("grok-4", "xAI", "Grok-4", "Next-gen autonomous reasoning engine from xAI.", "xai", "reason"),
   row("grok-4-mini", "xAI", "Grok-4 mini", "Real-time interactive intelligence.", "xai", "chat"),
   row("grok-4.6", "xAI", "Grok 4.6", "Latest frontier Grok with real-time world grounding.", "xai", "reason"),
+  row("grok-5", "xAI", "Grok 5", "Fifth-gen autonomous reasoning engine trained on Colossus 2.", "xai", "reason", false, ["thinking", "flagship"]),
+  row("grok-5-mini", "xAI", "Grok 5 Mini", "Speed-optimized Grok 5 for real-time applications.", "xai", "chat"),
 
   // --- META LLAMA ---
   row("llama-2-7b", "Meta", "Llama 2 7B", "Foundational open-source 7B dialogue model.", "meta", "chat"),

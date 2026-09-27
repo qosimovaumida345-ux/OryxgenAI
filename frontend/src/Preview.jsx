@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { buildMultiFileSandboxHtml } from "./CodeXWorkspace";
 import "./Chat.css";
 
 const CHATS_STORAGE_KEY = "oryxgen_saved_chats";
@@ -14,7 +15,7 @@ export default function PreviewPage() {
       const raw = localStorage.getItem(CHATS_STORAGE_KEY);
       if (raw) {
         const chats = JSON.parse(raw);
-        const target = chats.find(c => c.id === id);
+        const target = chats.find((c) => c.id === id);
         if (target) setChat(target);
       }
     } catch {}
@@ -22,53 +23,20 @@ export default function PreviewPage() {
 
   if (!chat) {
     return (
-      <div style={{ padding: 40, color: "white", textAlign: "center" }}>
+      <div style={{ padding: 60, color: "white", textAlign: "center", background: "#0a0a0a", minHeight: "100vh" }}>
         <h2>Loyiha topilmadi</h2>
-        <Link to="/app" style={{ color: "#60a5fa" }}>Orqaga qaytish</Link>
+        <p style={{ color: "#71717a", margin: "16px 0" }}>Loyiha o'chirilgan yoki hali saqlanmagan bo'lishi mumkin.</p>
+        <Link to="/app" style={{ color: "#60a5fa", textDecoration: "underline" }}>Orqaga qaytish</Link>
       </div>
     );
   }
 
   const files = chat.projectFiles || {};
   const hasFiles = Object.keys(files).length > 0;
+  const plan = chat.codexPlan || null;
+  const isBackendOrBot = plan?.projectType === "bot" || plan?.projectType === "backend" || plan?.projectType === "script";
 
-  // Extract main entry point. Default to App.jsx or App.js, or first file
-  const mainFile = files["App.jsx"] || files["App.js"] || files["index.jsx"] || files["index.html"] || Object.values(files)[0];
-
-  // A very robust basic Sandbox template for React + Tailwind
-  const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Oryxgen Live Preview</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-      <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-      <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-      <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-      <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; background: #ffffff; color: #000; }
-        * { box-sizing: border-box; }
-        ${files["styles.css"] || files["index.css"] || ""}
-      </style>
-    </head>
-    <body>
-      <div id="root"></div>
-      <script type="text/babel">
-        try {
-          ${
-            mainFile.includes("export default") || mainFile.includes("function App") || mainFile.includes("React")
-              ? mainFile.replace(/export default function/g, 'function').replace(/import .*?;/g, '') + `\n\nconst root = ReactDOM.createRoot(document.getElementById('root'));\nroot.render(<App />);`
-              : `document.getElementById('root').innerHTML = \`${mainFile}\`;`
-          }
-        } catch (err) {
-          document.getElementById('root').innerHTML = '<div style="color:red;padding:20px;">Xatolik yuz berdi:<br><pre>' + err.message + '</pre></div>';
-        }
-      </script>
-    </body>
-    </html>
-  `;
+  const htmlTemplate = buildMultiFileSandboxHtml(files);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#050505" }}>
@@ -102,8 +70,23 @@ export default function PreviewPage() {
         <Link to="/app" style={{ color: "#aaa", textDecoration: "none", fontSize: 13 }}>Orqaga</Link>
       </header>
 
-      <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden", background: "#000" }}>
-        {!hasFiles ? (
+      <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", overflow: "hidden", background: "#000", padding: 20 }}>
+        {isBackendOrBot ? (
+          <div style={{ maxWidth: 580, width: "100%", padding: 32, background: "#111113", border: "1px solid #27272a", borderRadius: 16, color: "white", textAlign: "center" }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: 20 }}>{plan?.title || chat.title}</h3>
+            <p style={{ color: "#9ca3af", fontSize: 14, margin: "0 0 20px 0" }}>
+              Ushbu loyiha <strong>{plan?.stack || "Backend/Bot"}</strong> muhitida mustaqil server yoki bot sifatida ishlaydi.
+            </p>
+            <div style={{ background: "#09090b", border: "1px solid #1f2937", padding: "12px 16px", borderRadius: 8, fontFamily: "monospace", fontSize: 13, color: "#4ade80", marginBottom: 24, textAlign: "left" }}>
+              <div style={{ color: "#6b7280", fontSize: 11, marginBottom: 4 }}>BUYRUQ:</div>
+              {plan?.runCommand || "npm start"}
+            </div>
+            <Link to="/app" style={{ display: "inline-block", background: "#3b82f6", color: "white", fontWeight: 600, padding: "10px 24px", borderRadius: 8, textDecoration: "none", fontSize: 14 }}>
+              CodeX Kodini Ko'rish
+            </Link>
+          </div>
+        ) : !hasFiles ? (
           <div style={{ color: "#666" }}>Fayllar hali yaratilmagan</div>
         ) : (
           <div style={{ 

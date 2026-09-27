@@ -130,17 +130,16 @@ async function streamSimulatedResponse(res, meta, userMsg, systemPrompt = "") {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
 
-  const isThinking = meta.capability === "reason" || meta.tags?.includes("thinking");
+  // Only emit thinking for designated reasoning/thinking models
+  const isThinking = meta.tags?.includes("thinking") && meta.capability === "reason";
 
   if (isThinking) {
     res.write(`data: ${JSON.stringify({ thinking: `Tahlil qilinmoqda: "${userMsg.slice(0, 45)}..."` })}\n\n`);
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 150));
     if (systemPrompt) {
-      res.write(`data: ${JSON.stringify({ thinking: `\n- Tizim ko'rsatmasi (System Prompt) yuklandi\n- Qoidalar tekshirildi` })}\n\n`);
-      await new Promise((r) => setTimeout(r, 250));
+      res.write(`data: ${JSON.stringify({ thinking: `\n- Tizim ko'rsatmasi yuklandi va qoidalar tekshirildi` })}\n\n`);
+      await new Promise((r) => setTimeout(r, 150));
     }
-    res.write(`data: ${JSON.stringify({ thinking: `\n- ${meta.displayName} (${meta.company}) arxitekturasi orqali javob shakllantirilmoqda...` })}\n\n`);
-    await new Promise((r) => setTimeout(r, 200));
   }
 
   const responseText = `Assalomu alaykum! Men **${meta.displayName}** (${meta.company}) modeliman.\n\nSiz yuborgan so'rov:\n> ${userMsg}\n\n${systemPrompt ? `*Custom System Prompt tatbiq etildi.* \n\n` : ""
@@ -253,13 +252,18 @@ CRITICAL INSTRUCTION: If the user asks who you are, what model you are, which co
 
             let text = delta?.content || "";
             if (text) {
+              // Normalize thought tags to think tags
+              text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
+
               if (text.includes("<think>")) {
                 inThinkTag = true;
-                text = text.replace("<think>", "");
+                const [preThink, postThink] = text.split(/<think>/i);
+                if (preThink) res.write(`data: ${JSON.stringify({ content: preThink })}\n\n`);
+                text = postThink || "";
               }
               if (text.includes("</think>")) {
                 inThinkTag = false;
-                const [thinkPart, normalPart] = text.split("</think>");
+                const [thinkPart, normalPart] = text.split(/<\/think>/i);
                 if (thinkPart) res.write(`data: ${JSON.stringify({ thinking: thinkPart })}\n\n`);
                 if (normalPart) res.write(`data: ${JSON.stringify({ content: normalPart })}\n\n`);
                 continue;

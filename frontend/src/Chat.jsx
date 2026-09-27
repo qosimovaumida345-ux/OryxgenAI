@@ -148,34 +148,85 @@ function buildSandboxHtml(files) {
   `;
 }
 
-// Simple markdown-to-HTML renderer for inline formatting
+// Comprehensive Markdown-to-HTML parser supporting bold, italics, code, headings, blockquotes, lists, and links
 function renderMarkdown(text) {
   if (!text) return "";
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>")
-    .replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>")
-    .replace(/&lt;em&gt;/g, "<em>").replace(/&lt;\/em&gt;/g, "</em>")
-    .replace(/&lt;strong&gt;/g, "<strong>").replace(/&lt;\/strong&gt;/g, "</strong>")
-    .replace(/&lt;br\s*\/?\s*&gt;/g, "<br>")
+    .replace(/>/g, "&gt;");
+
+  // Double backticks inline code
+  html = html.replace(/``([^`]+?)``/g, '<code class="md-inline-code">$1</code>');
+  // Single backtick inline code
+  html = html.replace(/`([^`]+?)`/g, '<code class="md-inline-code">$1</code>');
+
+  // Headings
+  html = html
+    .replace(/^##### (.+)$/gm, '<h5 class="md-h5">$1</h5>')
     .replace(/^#### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
     .replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>')
-    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
-    .replace(/^[\-\*] (.+)$/gm, '<li class="md-li">$1</li>')
-    .replace(/^\d+\. (.+)$/gm, '<li class="md-li-ordered">$1</li>')
-    .replace(/^---$/gm, '<hr class="md-hr">')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>')
+    .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>');
+
+  // Bold & Italic (handles ** bold **, **bold**, __bold__, ***bold italic***)
+  html = html
+    .replace(/\*\*\*([^*]+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/___([^_]+?)___/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+?)__/g, '<strong>$1</strong>')
+    .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/(?<!_)_([^_]+?)_(?!_)/g, '<em>$1</em>')
+    .replace(/~~([^~]+?)~~/g, '<del>$1</del>');
+
+  // Blockquotes (accounting for escaped > -> &gt;)
+  html = html.replace(/^&gt;\s?(.*)$/gm, '<blockquote class="md-quote">$1</blockquote>');
+
+  // Lists
+  html = html
+    .replace(/^[\*\-\+] (.+)$/gm, '<li class="md-li">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="md-li-ordered">$1</li>');
+
+  // Horizontal divider
+  html = html.replace(/^(?:---|___|\*\*\*)$/gm, '<hr class="md-hr">');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
+
+  // Paragraphs & Line Breaks
+  html = html
     .replace(/\n\n/g, '<div class="md-break"></div>')
     .replace(/\n/g, '<br>');
 
   return html;
+}
+
+// Helper to extract embedded <think>...</think> or <thought>...</thought> tags from content
+function extractThinkingAndContent(content = "", existingThinking = "") {
+  let thinking = (existingThinking || "").trim();
+  let cleanContent = content || "";
+
+  const thinkRegex = /<(?:think|thought)>([\s\S]*?)<\/(?:think|thought)>/gi;
+  let match;
+  while ((match = thinkRegex.exec(cleanContent)) !== null) {
+    const extracted = match[1].trim();
+    if (extracted) {
+      thinking = thinking ? `${thinking}\n${extracted}` : extracted;
+    }
+  }
+  cleanContent = cleanContent.replace(thinkRegex, "").trim();
+
+  // If there's an unclosed <think> tag at the end (e.g. during live streaming)
+  const unclosedMatch = cleanContent.match(/<(?:think|thought)>([\s\S]*)$/i);
+  if (unclosedMatch) {
+    const unclosed = unclosedMatch[1].trim();
+    if (unclosed) {
+      thinking = thinking ? `${thinking}\n${unclosed}` : unclosed;
+    }
+    cleanContent = cleanContent.replace(/<(?:think|thought)>[\s\S]*$/i, "").trim();
+  }
+
+  return { thinking, content: cleanContent };
 }
 
 export default function Chat() {
@@ -191,6 +242,7 @@ export default function Chat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentThinking, setCurrentThinking] = useState("");
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
+  const [thinkingExpandedMap, setThinkingExpandedMap] = useState({});
   const [thinkingTime, setThinkingTime] = useState(0);
 
   const [systemPrompt, setSystemPrompt] = useState(() => activeChat?.systemPrompt || SKILL_PRESETS[0].systemPrompt);
@@ -946,7 +998,9 @@ export default function Chat() {
               <div className="messages-flow">
                 {messages.map((m, idx) => {
                   const isLastStreaming = isStreaming && idx === messages.length - 1;
-                  const isExpanded = thinkingExpanded || isLastStreaming;
+                  const { thinking: msgThinking, content: msgContent } = extractThinkingAndContent(m.content, m.thinking);
+                  const isExpanded = isLastStreaming ? true : !!thinkingExpandedMap[m.id];
+                  const hasThinking = Boolean(msgThinking && msgThinking.trim().length > 0);
                   return (
                   <div key={m.id} className={`message-row ${m.role}`}>
                     <div className="message-avatar">
@@ -963,12 +1017,12 @@ export default function Chat() {
 
                     <div className="message-bubble-wrapper">
                       {/* Collapsible Reasoning Thinking Accordion */}
-                      {m.thinking && (
+                      {hasThinking && (
                         <div className="thinking-accordion">
                           <button
                             type="button"
                             className="thinking-toggle-header"
-                            onClick={() => setThinkingExpanded(!thinkingExpanded)}
+                            onClick={() => setThinkingExpandedMap((prev) => ({ ...prev, [m.id]: !isExpanded }))}
                           >
                             <div className="thinking-status-indicator">
                               <span className={`pulse-dot ${isLastStreaming ? "active" : ""}`} />
@@ -986,7 +1040,7 @@ export default function Chat() {
                           </button>
                           {isExpanded && (
                             <div className="thinking-body">
-                              <pre>{m.thinking}</pre>
+                              <pre>{msgThinking}</pre>
                             </div>
                           )}
                         </div>
@@ -1031,7 +1085,7 @@ export default function Chat() {
                         </div>
                       ) : (
                         <div className="message-content">
-                          {m.content.split("```").map((part, idx) => {
+                          {msgContent.split("```").map((part, idx) => {
                             if (idx % 2 === 1) {
                               const lines = part.split("\n");
                               const lang = lines[0].trim() || "code";
