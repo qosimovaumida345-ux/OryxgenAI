@@ -1513,33 +1513,39 @@ CRITICAL IDENTITY INSTRUCTIONS:
       }
     }
 
-    // Level 3: Non-streaming chunked fallback if all stream sources failed
+    // Level 3: Real AI dynamic fetch fallback (if stream endpoints failed)
     if (!streamSuccess) {
       try {
-        const fallbackText = `Salom! Men ${catalogModel.displayName}, Oryxgen AI platformasi mutaxassis modeliman. Tizim neyron tarmoq javobi muvaffaqiyatli uzatildi.`;
-        fullGeneratedText = fallbackText;
+        const lastUserMsg = messages.filter((m) => m.role === "user").pop()?.content || "Salom";
+        const polTextRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(lastUserMsg)}?system=${encodeURIComponent(`You are ${catalogModel.displayName} on Oryxgen AI.`)}`);
+        const realAiText = await polTextRes.text();
 
-        const chunks = fallbackText.split(" ");
-        for (let i = 0; i < chunks.length; i++) {
-          const chunkWord = (i === 0 ? "" : " ") + chunks[i];
-          const payload = {
-            id: `chatcmpl-${Date.now()}`,
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: catalogModel.id,
-            choices: [
-              {
-                index: 0,
-                delta: { content: chunkWord },
-                finish_reason: i === chunks.length - 1 ? "stop" : null,
-              },
-            ],
-          };
-          res.write(`data: ${JSON.stringify(payload)}\n\n`);
-          await new Promise((r) => setTimeout(r, 40));
+        if (realAiText && realAiText.trim()) {
+          fullGeneratedText = realAiText;
+          const chunks = realAiText.split(" ");
+          for (let i = 0; i < chunks.length; i++) {
+            const chunkWord = (i === 0 ? "" : " ") + chunks[i];
+            const payload = {
+              id: `chatcmpl-${Date.now()}`,
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: catalogModel.id,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: chunkWord },
+                  finish_reason: i === chunks.length - 1 ? "stop" : null,
+                },
+              ],
+            };
+            res.write(`data: ${JSON.stringify(payload)}\n\n`);
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          res.write("data: [DONE]\n\n");
+          streamSuccess = true;
         }
-        res.write("data: [DONE]\n\n");
       } catch (err) {
+        console.error("Real AI fallback error:", err.message);
         res.write(`data: {"error": "${err.message}"}\n\n`);
       }
     }
