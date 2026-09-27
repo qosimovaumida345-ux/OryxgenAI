@@ -895,7 +895,7 @@ export default function Chat() {
       </aside>
 
       {/* Main Chat Content & Split Screen */}
-      <div className={`chat-layout-content ${appMode === "codex" ? "codex-active" : ""}`}>
+      <div className={`chat-layout-content ${appMode === "codex" ? (isCodexCollapsed ? "codex-collapsed" : "codex-active") : ""}`}>
         <main className="chat-main">
           {/* Top Navbar */}
           <header className="chat-navbar">
@@ -930,6 +930,19 @@ export default function Chat() {
             </div>
 
             <div className="navbar-right">
+              {appMode === "codex" && isCodexCollapsed && (
+                <button
+                  type="button"
+                  className="nav-btn-action codex-nav-open-btn"
+                  onClick={toggleCodexCollapsed}
+                  title="CodeX Workspace panelini ochish"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15 18 9 12 15 6" />
+                  </svg>
+                  <span>CodeX IDE</span>
+                </button>
+              )}
 
               {Object.keys(projectFiles).length > 0 && (
                 <a

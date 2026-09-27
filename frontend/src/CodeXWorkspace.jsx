@@ -5,7 +5,75 @@ import JSZip from "jszip";
 export function buildMultiFileSandboxHtml(files = {}) {
   const fileKeys = Object.keys(files);
   if (fileKeys.length === 0) {
-    return `<!DOCTYPE html><html><body style="background:#09090b;color:#71717a;display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;margin:0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3f3f46" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg><p style="margin-top:14px;font-size:14px;">Loyiha fayllari hali mavjud emas. CodeX orqali biror g'oya bering.</p></body></html>`;
+    return `<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CodeX Sandbox</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #09090b;
+      color: #94a3b8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 24px;
+    }
+    .empty-card {
+      max-width: 400px;
+      padding: 32px 24px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .icon-box {
+      width: 52px;
+      height: 52px;
+      margin-bottom: 16px;
+      border-radius: 12px;
+      background: rgba(37, 99, 235, 0.1);
+      border: 1px solid rgba(37, 99, 235, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #60a5fa;
+    }
+    h3 {
+      margin: 0 0 8px;
+      color: #f1f5f9;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="empty-card">
+    <div class="icon-box">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 3v18M3 9h18"/>
+      </svg>
+    </div>
+    <h3>CodeX Sandbox Tayyor</h3>
+    <p>Loyiha fayllari hali mavjud emas. CodeX rejimida chat orqali biror g'oya bering (masalan: <i>"Zamonaviy hisob-kitob ilovasi yarat"</i>).</p>
+  </div>
+</body>
+</html>`;
   }
 
   // Pure HTML mode
@@ -219,17 +287,22 @@ export default function CodeXWorkspace({
 
   if (isCollapsed) {
     return (
-      <button
-        type="button"
-        className="codex-expand-btn"
-        onClick={onToggleCollapse}
-        title="CodeX Workspace panelini ochish"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-        <span>CodeX IDE</span>
-      </button>
+      <aside className="codex-collapsed-strip">
+        <button
+          type="button"
+          className="codex-expand-btn"
+          onClick={onToggleCollapse}
+          title="CodeX Workspace panelini ochish"
+          aria-label="CodeX Workspace panelini ochish"
+        >
+          <div className="codex-expand-icon">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </div>
+          <span className="codex-expand-text">CodeX IDE</span>
+        </button>
+      </aside>
     );
   }
 
