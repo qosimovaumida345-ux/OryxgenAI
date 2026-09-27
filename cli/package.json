@@ -1,6 +1,6 @@
 {
   "name": "oryxgen",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Official Oryxgen AI CLI - 200+ Models, 250+ Autonomous Agents & Neural CodeX Engine",
   "main": "bin/oryxgen.js",
   "type": "module",

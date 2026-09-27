@@ -13,12 +13,19 @@ import readline from "readline";
 // ── Configuration & Local Storage ──
 const CONFIG_DIR = path.join(os.homedir(), ".oryxgen");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
-const DEFAULT_BASE_URL = "https://avg-ai-creator.site/v1";
+const DEFAULT_BASE_URL = "https://oryxgen-api.onrender.com/v1";
 
 function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      const cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      if (!cfg.baseUrl || cfg.baseUrl.includes("avg-ai-creator.site")) {
+        cfg.baseUrl = DEFAULT_BASE_URL;
+      }
+      if (!cfg.apiKey) {
+        cfg.apiKey = "oryx_live_demo_free_access";
+      }
+      return cfg;
     }
   } catch {}
   return {
