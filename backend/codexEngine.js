@@ -1,8 +1,8 @@
 import { findMatchingTemplate } from "./templates.js";
-import { resolveBestCodeModel } from "./mapper.js";
+import { resolveBestCodeModel, getModelMaxTokens } from "./mapper.js";
 
-// Helper to call OpenRouter with failover across ranked models and large max_tokens
-async function callOpenRouter(messages, openRouterKey, temperature = 0.2, maxTokens = 8192) {
+// Helper to call OpenRouter with failover across ranked models, unleashing each model's TRUE MAXIMUM capacity
+async function callOpenRouter(messages, openRouterKey, temperature = 0.2, requestedMaxTokens = null) {
   if (!openRouterKey) {
     throw new Error("OpenRouter API kaliti sozlanmagan.");
   }
@@ -11,8 +11,11 @@ async function callOpenRouter(messages, openRouterKey, temperature = 0.2, maxTok
   let lastError = null;
 
   for (const model of modelChain) {
+    // Dynamically retrieve model's true maximum capacity (up to 131,072 or 65,536 tokens!)
+    let targetTokens = requestedMaxTokens || getModelMaxTokens(model);
+
     try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      let res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${openRouterKey}`,
@@ -24,16 +27,18 @@ async function callOpenRouter(messages, openRouterKey, temperature = 0.2, maxTok
           model,
           messages,
           temperature,
-          max_tokens: maxTokens,
+          max_tokens: targetTokens,
         }),
       });
 
-      let actualRes = res;
-      if (!actualRes.ok && actualRes.status === 400) {
-        const errText = await actualRes.text().catch(() => "");
-        if (/max_tokens|token limit|exceed/i.test(errText) && maxTokens > 4096) {
-          // Model maximum output is lower than 8192, retry with 4096
-          actualRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      if (!res.ok && res.status === 400) {
+        const errText = await res.text().catch(() => "");
+        if (/max_tokens|token limit|exceed/i.test(errText)) {
+          const matchNum = errText.match(/(?:maximum|limit|allowed|max_tokens is|up to)\s*(\d+)/i);
+          const fallbackLimit = matchNum ? parseInt(matchNum[1], 10) : Math.floor(targetTokens / 2);
+          targetTokens = Math.max(fallbackLimit, 8192);
+
+          res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
               Authorization: `Bearer ${openRouterKey}`,
@@ -45,24 +50,21 @@ async function callOpenRouter(messages, openRouterKey, temperature = 0.2, maxTok
               model,
               messages,
               temperature,
-              max_tokens: 4096,
+              max_tokens: targetTokens,
             }),
           });
-        } else {
-          lastError = new Error(`Model ${model} xatosi: ${actualRes.status} ${errText}`);
-          continue;
         }
       }
 
-      if (actualRes.ok) {
-        const data = await actualRes.json();
+      if (res.ok) {
+        const data = await res.json();
         const content = data.choices?.[0]?.message?.content || "";
         if (content.trim()) {
-          return { content, modelUsed: model };
+          return { content, modelUsed: model, tokensAllocated: targetTokens };
         }
       } else {
-        const errText = await actualRes.text().catch(() => "");
-        lastError = new Error(`Model ${model} xatosi: ${actualRes.status} ${errText}`);
+        const errText = await res.text().catch(() => "");
+        lastError = new Error(`Model ${model} xatosi: ${res.status} ${errText}`);
       }
     } catch (err) {
       lastError = err;
@@ -301,7 +303,7 @@ JSON Schema:
   let lastErr = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const { content } = await callOpenRouter(messages, openRouterKey, 0.2, 2048);
+      const { content } = await callOpenRouter(messages, openRouterKey, 0.2, null);
 
       let jsonStr = content.trim();
       const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -466,7 +468,7 @@ CRITICAL IMPLEMENTATION RULES (DEEP, COMPREHENSIVE, COMPLETE CODE):
     ];
 
     try {
-      const { content } = await callOpenRouter(messages, openRouterKey, 0.15, 8192);
+      const { content } = await callOpenRouter(messages, openRouterKey, 0.15, null);
 
       let fileCode = "";
       const match = content.match(/<file\s+path="[^"]*">([\s\S]*?)<\/file>/);
@@ -620,7 +622,7 @@ Fix the exact syntax error, close all tags and brackets properly, and output ONL
         { role: "user", content: fixPrompt },
       ];
 
-      const { content } = await callOpenRouter(messages, openRouterKey, 0.1, 4096);
+      const { content } = await callOpenRouter(messages, openRouterKey, 0.1, null);
       const match = content.match(/<file\s+path="[^"]*">([\s\S]*?)<\/file>/);
       if (match) {
         currentCode = match[1].trim();

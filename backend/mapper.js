@@ -48,20 +48,26 @@ const BY_CAPABILITY = {
 };
 
 let cachedFree = { at: 0, ids: [...FALLBACK_FREE_MODELS] };
+let cachedMaxTokens = {};
 
 export async function refreshFreeModels() {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models");
     if (!res.ok) return cachedFree.ids;
     const data = await res.json();
-    const liveFreeIds = (data.data || [])
-      .filter((m) => {
-        const id = m.id || "";
-        const p = m.pricing || {};
-        const isFreePrice = String(p.prompt) === "0" && String(p.completion) === "0";
-        return isFreePrice || id.endsWith(":free") || id === "openrouter/free";
-      })
-      .map((m) => m.id);
+    const liveFreeIds = [];
+    (data.data || []).forEach((m) => {
+      const id = m.id || "";
+      const p = m.pricing || {};
+      const isFreePrice = String(p.prompt) === "0" && String(p.completion) === "0";
+      if (isFreePrice || id.endsWith(":free") || id === "openrouter/free") {
+        liveFreeIds.push(id);
+        const maxOut = m.top_provider?.max_completion_tokens || m.per_request_limits?.max_completion_tokens;
+        if (maxOut && typeof maxOut === "number") {
+          cachedMaxTokens[id] = maxOut;
+        }
+      }
+    });
 
     if (liveFreeIds.length) {
       cachedFree = {
@@ -74,6 +80,21 @@ export async function refreshFreeModels() {
     console.warn("[OpenRouter] Live model fetch failed, utilizing cached pool:", err.message);
   }
   return cachedFree.ids;
+}
+
+export function getModelMaxTokens(modelId = "") {
+  if (cachedMaxTokens[modelId]) {
+    return cachedMaxTokens[modelId];
+  }
+  const lower = modelId.toLowerCase();
+  if (lower.includes("qwen")) return 131072;
+  if (lower.includes("inkling")) return 131072;
+  if (lower.includes("nemotron")) return 65536;
+  if (lower.includes("cohere") || lower.includes("north")) return 64000;
+  if (lower.includes("gemma")) return 32768;
+  if (lower.includes("laguna") || lower.includes("poolside")) return 32768;
+  if (lower.includes("liquid") || lower.includes("lfm")) return 8192;
+  return 32768;
 }
 
 export async function getFreePool() {
