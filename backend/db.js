@@ -63,21 +63,12 @@ export async function initDb() {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
 
-      -- Try adding new columns if they don't exist (for existing DBs)
-      BEGIN
-        ALTER TABLE users ADD COLUMN default_system_prompt TEXT;
-      EXCEPTION
-        WHEN duplicate_column THEN null;
-      END;
-
-      BEGIN
-        ALTER TABLE chats ADD COLUMN mode VARCHAR(50) DEFAULT 'chat';
-        ALTER TABLE chats ADD COLUMN system_prompt TEXT;
-        ALTER TABLE chats ADD COLUMN skill_id VARCHAR(100) DEFAULT 'default';
-        ALTER TABLE chats ADD COLUMN project_files JSONB DEFAULT '{}'::jsonb;
-      EXCEPTION
-        WHEN duplicate_column THEN null;
-      END;
+      -- Safely add new columns if they don't exist (for existing DBs)
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS default_system_prompt TEXT;
+      ALTER TABLE chats ADD COLUMN IF NOT EXISTS mode VARCHAR(50) DEFAULT 'chat';
+      ALTER TABLE chats ADD COLUMN IF NOT EXISTS system_prompt TEXT;
+      ALTER TABLE chats ADD COLUMN IF NOT EXISTS skill_id VARCHAR(100) DEFAULT 'default';
+      ALTER TABLE chats ADD COLUMN IF NOT EXISTS project_files JSONB DEFAULT '{}'::jsonb;
 
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
