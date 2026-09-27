@@ -28,15 +28,41 @@ async function callOpenRouter(messages, openRouterKey, temperature = 0.2, maxTok
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      let actualRes = res;
+      if (!actualRes.ok && actualRes.status === 400) {
+        const errText = await actualRes.text().catch(() => "");
+        if (/max_tokens|token limit|exceed/i.test(errText) && maxTokens > 4096) {
+          // Model maximum output is lower than 8192, retry with 4096
+          actualRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openRouterKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://avg-ai-creator.site",
+              "X-Title": "Oryxgen AI CodeX Engine",
+            },
+            body: JSON.stringify({
+              model,
+              messages,
+              temperature,
+              max_tokens: 4096,
+            }),
+          });
+        } else {
+          lastError = new Error(`Model ${model} xatosi: ${actualRes.status} ${errText}`);
+          continue;
+        }
+      }
+
+      if (actualRes.ok) {
+        const data = await actualRes.json();
         const content = data.choices?.[0]?.message?.content || "";
         if (content.trim()) {
           return { content, modelUsed: model };
         }
       } else {
-        const errText = await res.text().catch(() => "");
-        lastError = new Error(`Model ${model} xatosi: ${res.status} ${errText}`);
+        const errText = await actualRes.text().catch(() => "");
+        lastError = new Error(`Model ${model} xatosi: ${actualRes.status} ${errText}`);
       }
     } catch (err) {
       lastError = err;
@@ -440,7 +466,7 @@ CRITICAL IMPLEMENTATION RULES (DEEP, COMPREHENSIVE, COMPLETE CODE):
     ];
 
     try {
-      const { content } = await callOpenRouter(messages, openRouterKey, 0.15, 4096);
+      const { content } = await callOpenRouter(messages, openRouterKey, 0.15, 8192);
 
       let fileCode = "";
       const match = content.match(/<file\s+path="[^"]*">([\s\S]*?)<\/file>/);
