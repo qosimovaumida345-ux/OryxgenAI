@@ -22,7 +22,7 @@ function loadConfig() {
     }
   } catch {}
   return {
-    apiKey: process.env.ORYXGEN_API_KEY || "",
+    apiKey: process.env.ORYXGEN_API_KEY || "oryx_live_demo_free_access",
     baseUrl: process.env.ORYXGEN_BASE_URL || DEFAULT_BASE_URL,
     defaultModel: "gpt-6-astra",
   };
@@ -356,8 +356,7 @@ async function handleChat(args) {
   const cfg = loadConfig();
 
   if (!cfg.apiKey) {
-    console.log(`${C.amber}⚠️ API kalit sozlanmagan. Avval 'oryxgen auth <key>' ni bajaring.${C.reset}`);
-    return;
+    cfg.apiKey = "oryx_live_demo_free_access";
   }
 
   let currentModel = args[0] || cfg.defaultModel || "gpt-6-astra";
