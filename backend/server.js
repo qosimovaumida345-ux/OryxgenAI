@@ -726,7 +726,7 @@ async function handleMcpJsonRpc(body, user) {
           const previewUrl = `https://avg-ai-creator.site/preview/${newChatId}`;
           const zipDownloadToken = generateDownloadToken(newChatId, user.id);
           const zipDownloadUrl = `https://avg-ai-creator.site/api/projects/${newChatId}/zip?token=${zipDownloadToken}`;
-          
+
           // 1. Dastlabki "Loading" holatini saqlaymiz
           const initialChatObj = {
             id: newChatId,
@@ -1058,7 +1058,7 @@ app.get("/authorize", (req, res) => {
 
   const cleanClientId = client_id ? String(client_id).trim() : MCP_CLIENT_ID;
   const allowedClients = [MCP_CLIENT_ID, "oryxgen-ai-mcp-client", "oryxgen-cursor-client", "oryxgen-vscode-client"];
-  
+
   if (!allowedClients.includes(cleanClientId) && !dynamicOAuthClients.has(cleanClientId) && !cleanClientId.includes("claude")) {
     if (!isAllowedRedirectUri(redirect_uri)) {
       console.log(`[OAUTH] Unknown client_id rejected: "${cleanClientId}"`);
@@ -1668,52 +1668,153 @@ CRITICAL IDENTITY INSTRUCTIONS:
   });
 });
 
-// POST /v1/codex/generate (Autonomous multi-file project scaffolding via API/CLI)
-app.post("/v1/codex/generate", apiKeyAuthMiddleware, async (req, res) => {
-  const { prompt } = req.body || {};
-  if (!prompt || !prompt.trim()) {
-    return res.status(400).json({ error: "Prompt kiritilishi shart." });
-  }
+// =========================================================================
+  // ── ANTHROPIC MESSAGES API COMPATIBILITY (/v1/messages) ──
+  // Direct native integration for Claude Code CLI (claude), Claude Desktop, Cursor & Anthropic SDKs
+  // =========================================================================
+  app.post(["/v1/messages", "/api/v1/messages", "/messages"], apiKeyAuthMiddleware, async (req, res) => {
+    const startTime = Date.now();
+    const {
+      model: requestedModel = "claude-4.6-sonnet",
+      messages = [],
+      system = "",
+      max_tokens = 4096,
+      temperature = 0.7,
+      stream = false,
+      tools = undefined,
+    } = req.body || {};
 
-  try {
-    const result = await executeCodexPipeline(prompt, OR_KEY);
-    const inTokens = Math.ceil(prompt.length / 4);
-    const outTokens = Math.ceil(JSON.stringify(result.projectFiles).length / 4);
+    // Resolve upstream model
+    const catalogModel = findModel(requestedModel) || {
+      id: requestedModel,
+      displayName: requestedModel,
+      company: "Oryxgen AI",
+      capability: "code",
+    };
 
-    await logApiUsage({
-      keyPrefix: req.apiKey.key_prefix,
-      userId: req.user.id,
-      model: "CodeX Engine",
-      inputTokens: inTokens,
-      outputTokens: outTokens,
-      durationMs: 3000,
-    });
+    let upstreamModel = requestedModel;
+    if (!requestedModel.includes("/")) {
+      const chain = await resolveUpstream(catalogModel.capability || "code", requestedModel);
+      upstreamModel = chain[0] || "nvidia/nemotron-3-ultra-550b-a55b:free";
+    }
+    const clientAuthToken = (req.headers["authorization"] || "").replace(/^Bearer\s+/i, "").trim() || (req.headers["x-api-key"] || "").trim();
+    const effectiveKey = OR_KEY || (clientAuthToken.startsWith("sk-or-") ? clientAuthToken : "");
 
-    res.json({
-      ok: true,
-      plan: result.plan,
-      files: result.projectFiles,
-      summary: result.plan?.summary,
-      totalFiles: Object.keys(result.projectFiles).length,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    try {
+      const upstreamRes = await fetch("https://openrouter.ai/api/v1/messages", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${effectiveKey}`,
+          "Content-Type": "application/json",
+          "anthropic-version": req.headers["anthropic-version"] || "2023-06-01",
+          "HTTP-Referer": "https://avg-ai-creator.site",
+          "X-Title": "Oryxgen AI Messages Gateway",
+        },
+        body: JSON.stringify({
+          model: upstreamModel,
+          messages,
+          system,
+          max_tokens,
+          temperature,
+          stream,
+          ...(tools ? { tools } : {}),
+        }),
+      });
 
-// GET /v1/analytics/usage (API-level token metrics)
-app.get("/v1/analytics/usage", apiKeyAuthMiddleware, async (req, res) => {
-  try {
-    const stats = await getApiUsageAnalytics(req.user.id);
-    res.json({ ok: true, stats });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+      if (stream) {
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders?.();
 
-// Start initial scan of free models
-refreshFreeModels();
+        if (!upstreamRes.ok || !upstreamRes.body) {
+          const errText = await upstreamRes.text().catch(() => "");
+          res.write(`event: error\ndata: ${JSON.stringify({ type: "error", error: { message: errText || "Upstream model error" } })}\n\n`);
+          return res.end();
+        }
 
-app.listen(PORT, () => {
-  console.log(`Oryxgen AI API & MCP Server running on http://localhost:${PORT}`);
-});
+        const reader = upstreamRes.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        res.end();
+      } else {
+        const data = await upstreamRes.json();
+        res.status(upstreamRes.status).json(data);
+      }
+
+      // Log usage
+      const inTokens = Math.ceil((JSON.stringify(messages).length + (system?.length || 0)) / 4);
+      const durationMs = Date.now() - startTime;
+      await logApiUsage({
+        keyPrefix: req.apiKey.key_prefix,
+        userId: req.user.id,
+        model: catalogModel.displayName,
+        inputTokens: inTokens,
+        outputTokens: 50,
+        durationMs,
+      }).catch(() => { });
+    } catch (err) {
+      console.error("Messages endpoint error:", err.message);
+      if (!res.headersSent) {
+        res.status(500).json({
+          type: "error",
+          error: { type: "api_error", message: err.message },
+        });
+      } else {
+        res.end();
+      }
+    }
+  });
+
+  // POST /v1/codex/generate (Autonomous multi-file project scaffolding via API/CLI)
+  app.post("/v1/codex/generate", apiKeyAuthMiddleware, async (req, res) => {
+    const { prompt } = req.body || {};
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ error: "Prompt kiritilishi shart." });
+    }
+
+    try {
+      const result = await executeCodexPipeline(prompt, OR_KEY);
+      const inTokens = Math.ceil(prompt.length / 4);
+      const outTokens = Math.ceil(JSON.stringify(result.projectFiles).length / 4);
+
+      await logApiUsage({
+        keyPrefix: req.apiKey.key_prefix,
+        userId: req.user.id,
+        model: "CodeX Engine",
+        inputTokens: inTokens,
+        outputTokens: outTokens,
+        durationMs: 3000,
+      });
+
+      res.json({
+        ok: true,
+        plan: result.plan,
+        files: result.projectFiles,
+        summary: result.plan?.summary,
+        totalFiles: Object.keys(result.projectFiles).length,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /v1/analytics/usage (API-level token metrics)
+  app.get("/v1/analytics/usage", apiKeyAuthMiddleware, async (req, res) => {
+    try {
+      const stats = await getApiUsageAnalytics(req.user.id);
+      res.json({ ok: true, stats });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Start initial scan of free models
+  refreshFreeModels();
+
+  app.listen(PORT, () => {
+    console.log(`Oryxgen AI API & MCP Server running on http://localhost:${PORT}`);
+  });
