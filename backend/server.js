@@ -1384,7 +1384,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
   const finalMessages = [brandSystemMessage, ...messages];
 
   // Resolve upstream fallback models
-  const modelChain = resolveUpstream(requestedModel);
+  const modelChain = await resolveUpstream(catalogModel.capability || "chat", requestedModel);
   let targetTokens = max_tokens || getModelMaxTokens(modelChain[0] || requestedModel);
 
   // If streaming is requested

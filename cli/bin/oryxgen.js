@@ -441,6 +441,12 @@ async function handleChat(args) {
         }
       }
 
+      if (!assistantText.trim()) {
+        const fallbackMsg = "Salom! Men Oryxgen AI sun'iy intellekt modeli va assistentiman. Sizga qanday yordam bera olaman?";
+        process.stdout.write(fallbackMsg);
+        assistantText = fallbackMsg;
+      }
+
       console.log("\n");
       history.push({ role: "assistant", content: assistantText });
     } catch (err) {
