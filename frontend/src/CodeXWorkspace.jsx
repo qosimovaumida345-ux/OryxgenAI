@@ -89,47 +89,56 @@ export function buildMultiFileSandboxHtml(files = {}) {
     .join("\n");
 
   // 2. Identify and order code files:
-  // Order: utils/data -> hooks -> context -> components -> App.jsx (root last)
+  // Exclude scaffolds (index.html, main.jsx, configs, etc.) from in-browser concatenation
   const codeEntries = Object.entries(files).filter(
-    ([name]) => /\.(jsx?|tsx?)$/i.test(name) && !name.endsWith(".d.ts")
+    ([name]) =>
+      /\.(jsx?|tsx?)$/i.test(name) &&
+      !name.endsWith(".d.ts") &&
+      !name.endsWith("main.jsx") &&
+      !name.endsWith("main.js") &&
+      !name.includes("vite.config") &&
+      !name.includes("tailwind.config") &&
+      !name.includes("postcss.config")
   );
 
   const scoreFile = (path) => {
     const lower = path.toLowerCase();
-    if (lower.includes("app.jsx") || lower.includes("app.js") || lower.endsWith("main.jsx")) return 100;
+    if (lower.includes("app.jsx") || lower.includes("app.js")) return 100;
     if (lower.includes("component")) return 50;
     if (lower.includes("context") || lower.includes("store")) return 30;
     if (lower.includes("hook")) return 20;
-    if (lower.includes("util") || lower.includes("data") || lower.includes("mock")) return 10;
+    if (lower.includes("service") || lower.includes("util") || lower.includes("storage")) return 10;
     return 40;
   };
 
   codeEntries.sort((a, b) => scoreFile(a[0]) - scoreFile(b[0]));
 
   // 3. Transform and concatenate code files into a single unified script block
-  const transformedModules = codeEntries.map(([path, code]) => {
-    // Strip imports and adjust exports for global browser execution
-    let transformed = code
-      // Strip import statements
-      .replace(/import\s+React(?:,\s*\{[^}]*\})?\s+from\s+['"][^'"]+['"];?/g, "")
-      .replace(/import\s+['"][^'"]+['"];?/g, "")
-      .replace(/import\s+([A-Za-z0-9_]+)\s+from\s+['"][^'"]+['"];?/g, "")
-      .replace(/import\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?/g, "")
-      .replace(/import\s+\*\s+as\s+[A-Za-z0-9_]+\s+from\s+['"][^'"]+['"];?/g, "")
-      // Convert exports to declarations
-      .replace(/export\s+default\s+function\s+([A-Za-z0-9_]+)/g, "function $1")
-      .replace(/export\s+default\s+([A-Za-z0-9_]+);?/g, "/* export default $1 */")
-      .replace(/export\s+const\s+/g, "const ")
-      .replace(/export\s+function\s+/g, "function ")
-      .replace(/export\s+class\s+/g, "class ")
-      .replace(/export\s+/g, "");
+  const transformedModules = codeEntries
+    .map(([path, code]) => {
+      let transformed = code
+        // Strip all import statements (single-line or multi-line)
+        .replace(/import\s+(?:type\s+)?[\s\S]*?from\s+['"][^'"]+['"];?/g, "")
+        .replace(/import\s+['"][^'"]+['"];?/g, "")
+        // Convert exports to declarations
+        .replace(/export\s+default\s+function\s*([A-Za-z0-9_]*)/g, "function $1")
+        .replace(/export\s+default\s+class\s*([A-Za-z0-9_]*)/g, "class $1")
+        .replace(/export\s+default\s+([A-Za-z0-9_]+);?/g, "/* export default $1 */")
+        .replace(/export\s+const\s+/g, "const ")
+        .replace(/export\s+let\s+/g, "let ")
+        .replace(/export\s+var\s+/g, "var ")
+        .replace(/export\s+function\s+/g, "function ")
+        .replace(/export\s+class\s+/g, "class ")
+        .replace(/export\s+\{[^}]*\};?/g, "")
+        .replace(/export\s+/g, "");
 
-    return `\n// --- File: ${path} ---\n${transformed}\n`;
-  }).join("\n");
+      return `\n// --- File: ${path} ---\n${transformed}\n`;
+    })
+    .join("\n");
 
   return `
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="uz">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -138,9 +147,8 @@ export function buildMultiFileSandboxHtml(files = {}) {
       <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
       <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
       <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
       <style>
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #ffffff; color: #111827; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #09090b; color: #f8fafc; }
         * { box-sizing: border-box; }
         ${customCss}
       </style>
@@ -151,20 +159,63 @@ export function buildMultiFileSandboxHtml(files = {}) {
         try {
           const { useState, useEffect, useRef, useMemo, useCallback, useContext, createContext } = React;
 
-          // Common Lucide/Feather icon stubs to prevent ReferenceError on unbundled icons
-          const ICON_NAMES = [
-            "ShoppingCart", "Search", "Menu", "X", "Trash2", "Trash", "Plus", "Minus", "Star",
-            "Heart", "Check", "ArrowRight", "ArrowLeft", "ChevronDown", "ChevronUp", "Filter",
-            "Sliders", "User", "Settings", "Shield", "Zap", "Sun", "Moon", "Eye", "EyeOff",
-            "Share", "Download", "Upload", "Globe", "Mail", "Phone", "Lock", "Unlock", "Clock",
-            "Calendar", "Tag", "ShoppingBag", "CheckCircle", "AlertCircle", "HelpCircle", "Sparkles", "Copy"
-          ];
-          ICON_NAMES.forEach(name => {
-            if (typeof window[name] === 'undefined') {
-              window[name] = (props) => React.createElement('span', {
+          // Utility Polyfills
+          window.clsx = (...args) => args.flat().filter(Boolean).join(' ');
+          window.cn = window.clsx;
+
+          // Universal Safe Lucide Icon Component Generator
+          function createSafeIcon(name) {
+            return (props) => {
+              const size = props?.size || 18;
+              const strokeWidth = props?.strokeWidth || 2;
+              const className = props?.className || '';
+              return React.createElement('svg', {
                 ...props,
-                className: 'inline-flex items-center justify-center ' + (props.className || '')
-              }, name === 'Star' ? '★' : name === 'Heart' ? '♥' : name.includes('Shopping') ? '🛒' : name.includes('Check') ? '✓' : name === 'Search' ? '🔍' : name.includes('Trash') ? '🗑️' : name === 'Plus' ? '+' : name === 'Minus' ? '−' : name === 'X' ? '✕' : name === 'Menu' ? '☰' : '•');
+                viewBox: '0 0 24 24',
+                width: size,
+                height: size,
+                fill: 'none',
+                stroke: 'currentColor',
+                strokeWidth: strokeWidth,
+                strokeLinecap: 'round',
+                strokeLinejoin: 'round',
+                className: 'inline-block align-middle ' + className
+              },
+                name.includes('Search') ? React.createElement(React.Fragment, null, React.createElement('circle', { cx: 11, cy: 11, r: 8 }), React.createElement('line', { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })) :
+                name.includes('Cart') || name.includes('Bag') ? React.createElement(React.Fragment, null, React.createElement('circle', { cx: 9, cy: 21, r: 1 }), React.createElement('circle', { cx: 20, cy: 21, r: 1 }), React.createElement('path', { d: 'M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6' })) :
+                name.includes('Trash') ? React.createElement(React.Fragment, null, React.createElement('polyline', { points: '3 6 5 6 21 6' }), React.createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' })) :
+                name.includes('Check') ? React.createElement('polyline', { points: '20 6 9 17 4 12' }) :
+                name.includes('Plus') ? React.createElement(React.Fragment, null, React.createElement('line', { x1: 12, y1: 5, x2: 12, y2: 19 }), React.createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 })) :
+                name.includes('Minus') ? React.createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 }) :
+                name.includes('X') || name.includes('Close') ? React.createElement(React.Fragment, null, React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }), React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })) :
+                name.includes('Edit') ? React.createElement(React.Fragment, null, React.createElement('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }), React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })) :
+                name.includes('Star') ? React.createElement('polygon', { points: '12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2' }) :
+                name.includes('Heart') ? React.createElement('path', { d: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z' }) :
+                name.includes('Arrow') && name.includes('Right') ? React.createElement(React.Fragment, null, React.createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 }), React.createElement('polyline', { points: '12 5 19 12 12 19' })) :
+                name.includes('Arrow') && name.includes('Left') ? React.createElement(React.Fragment, null, React.createElement('line', { x1: 19, y1: 12, x2: 5, y2: 12 }), React.createElement('polyline', { points: '12 19 5 12 12 5' })) :
+                name.includes('Chevron') && name.includes('Down') ? React.createElement('polyline', { points: '6 9 12 15 18 9' }) :
+                name.includes('Chevron') && name.includes('Up') ? React.createElement('polyline', { points: '18 15 12 9 6 15' }) :
+                name.includes('Chevron') && name.includes('Right') ? React.createElement('polyline', { points: '9 18 15 12 9 6' }) :
+                name.includes('Chevron') && name.includes('Left') ? React.createElement('polyline', { points: '15 18 9 12 15 6' }) :
+                name.includes('User') ? React.createElement(React.Fragment, null, React.createElement('path', { d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }), React.createElement('circle', { cx: 12, cy: 7, r: 4 })) :
+                name.includes('Settings') ? React.createElement(React.Fragment, null, React.createElement('circle', { cx: 12, cy: 12, r: 3 }), React.createElement('path', { d: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z' })) :
+                name.includes('Filter') ? React.createElement('polygon', { points: '22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3' }) :
+                name.includes('Send') ? React.createElement(React.Fragment, null, React.createElement('line', { x1: 22, y1: 2, x2: 11, y2: 13 }), React.createElement('polygon', { points: '22 2 15 22 11 13 2 9 22 2' })) :
+                name.includes('Bell') ? React.createElement(React.Fragment, null, React.createElement('path', { d: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9' }), React.createElement('path', { d: 'M13.73 21a2 2 0 0 1-3.46 0' })) :
+                React.createElement('circle', { cx: 12, cy: 12, r: 8 })
+              );
+            };
+          }
+
+          // Register all PascalCase JSX tags in window so ANY Lucide icon works!
+          const allCode = ${JSON.stringify(transformedModules)};
+          const potentialIcons = (allCode.match(/<([A-Z][a-zA-Z0-9]+)/g) || [])
+            .map(s => s.replace('<', ''))
+            .filter(name => !['App', 'React', 'Fragment'].includes(name));
+          
+          potentialIcons.forEach(iconName => {
+            if (typeof window[iconName] === 'undefined') {
+              window[iconName] = createSafeIcon(iconName);
             }
           });
 
@@ -181,7 +232,7 @@ export function buildMultiFileSandboxHtml(files = {}) {
           }
         } catch (err) {
           console.error("Live Preview Sandbox Error:", err);
-          document.getElementById('root').innerHTML = '<div style="color:#ef4444;background:#fef2f2;padding:24px;border:1px solid #fecaca;border-radius:12px;margin:20px;font-family:monospace;"><strong>Ishga tushirishda xatolik:</strong><br/><pre style="white-space:pre-wrap;margin-top:10px;">' + err.message + '</pre></div>';
+          document.getElementById('root').innerHTML = '<div style="color:#ef4444;background:#18181b;padding:24px;border:1px solid #3f3f46;border-radius:12px;margin:20px;font-family:monospace;"><strong>Ishga tushirishda xatolik:</strong><br/><pre style="white-space:pre-wrap;margin-top:10px;color:#fca5a5;">' + err.message + '</pre></div>';
         }
       </script>
     </body>
@@ -192,23 +243,17 @@ export function buildMultiFileSandboxHtml(files = {}) {
 // Minimal Syntax Formatter / Highlighter
 function formatCodeWithTokens(code = "", language = "javascript") {
   if (!code) return "";
-  // Escape HTML
   const escaped = code
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Highlight comments
   let highlighted = escaped
     .replace(/(\/\/[^\n]*)/g, '<span class="tok-comment">$1</span>')
     .replace(/(#\s[^\n]*)/g, '<span class="tok-comment">$1</span>')
-    // Strings
     .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="tok-string">$1</span>')
-    // Keywords
-    .replace(/\b(import|export|from|default|function|const|let|var|return|if|else|async|await|try|catch|class|def|import|from|as|while|for|in|class)\b/g, '<span class="tok-keyword">$1</span>')
-    // Built-ins & React
+    .replace(/\b(import|export|from|default|function|const|let|var|return|if|else|async|await|try|catch|class|def|as|while|for|in)\b/g, '<span class="tok-keyword">$1</span>')
     .replace(/\b(React|useState|useEffect|useRef|useMemo|console|document|window|ApplicationBuilder|Update|CommandHandler|Flask|jsonify)\b/g, '<span class="tok-builtin">$1</span>')
-    // Numbers
     .replace(/\b(\d+)\b/g, '<span class="tok-number">$1</span>');
 
   return highlighted;
@@ -268,7 +313,135 @@ export default function CodeXWorkspace({
   };
 
   const handleDownloadZip = async () => {
-    const filesToZip = fileKeys.length > 0 ? projectFiles : { "App.jsx": "// CodeX App" };
+    const filesToZip = { ...projectFiles };
+    const cleanTitle = (activeChatTitle || "codex-project").replace(/[^a-zA-Z0-9_\-]/g, "_");
+    const cleanName = cleanTitle.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^-+|-+$/g, "") || "codex-app";
+
+    // Guarantee that standard Vite + React scaffold files are present to prevent 404 in localhost:5173
+    if (!isBackendOrBot) {
+      if (!filesToZip["index.html"]) {
+        filesToZip["index.html"] = `<!DOCTYPE html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${activeChatTitle || "Oryxgen App"}</title>
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>`;
+      }
+
+      if (!filesToZip["src/main.jsx"] && !filesToZip["main.jsx"]) {
+        filesToZip["src/main.jsx"] = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+`;
+      }
+
+      if (!filesToZip["vite.config.js"]) {
+        filesToZip["vite.config.js"] = `import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    open: true,
+  },
+});
+`;
+      }
+
+      if (!filesToZip["package.json"]) {
+        filesToZip["package.json"] = JSON.stringify({
+          name: cleanName,
+          private: true,
+          version: "1.0.0",
+          type: "module",
+          scripts: {
+            dev: "vite",
+            build: "vite build",
+            preview: "vite preview"
+          },
+          dependencies: {
+            react: "^18.3.1",
+            "react-dom": "^18.3.1",
+            "lucide-react": "^0.460.0",
+            clsx: "^2.1.1",
+            "tailwind-merge": "^2.5.5"
+          },
+          devDependencies: {
+            "@vitejs/plugin-react": "^4.3.4",
+            vite: "^6.0.0",
+            tailwindcss: "^3.4.15",
+            postcss: "^8.4.49",
+            autoprefixer: "^10.4.20"
+          }
+        }, null, 2);
+      }
+
+      if (!filesToZip["tailwind.config.js"]) {
+        filesToZip["tailwind.config.js"] = `/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: { extend: {} },
+  plugins: [],
+};
+`;
+      }
+
+      if (!filesToZip["postcss.config.js"]) {
+        filesToZip["postcss.config.js"] = `export default {
+  plugins: { tailwindcss: {}, autoprefixer: {} },
+};
+`;
+      }
+
+      if (!filesToZip["src/index.css"] && !filesToZip["index.css"]) {
+        filesToZip["src/index.css"] = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #09090b;
+  color: #f8fafc;
+}
+`;
+      }
+
+      if (!filesToZip["README.md"]) {
+        filesToZip["README.md"] = `# ${activeChatTitle || "Oryxgen App"}
+
+## Ishga tushirish (Local Development)
+
+1. Kutubxonalarni o'rnatish:
+\`\`\`bash
+npm install
+\`\`\`
+
+2. Dasturni ishga tushirish:
+\`\`\`bash
+npm run dev
+\`\`\`
+
+Brauzeringizda quyidagi manzilni oching:
+👉 **http://localhost:5173**
+`;
+      }
+    }
+
     const zip = new JSZip();
     Object.entries(filesToZip).forEach(([filePath, content]) => {
       zip.file(filePath, content);
@@ -277,7 +450,6 @@ export default function CodeXWorkspace({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const cleanTitle = (activeChatTitle || "codex-project").replace(/[^a-zA-Z0-9_\-]/g, "_");
     a.download = `${cleanTitle}.zip`;
     document.body.appendChild(a);
     a.click();
