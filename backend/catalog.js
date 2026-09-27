@@ -289,5 +289,21 @@ export const PUBLIC_MODELS = CATALOG;
 export const PUBLIC_IMAGE_MODELS = IMAGE_CATALOG;
 
 export function findModel(id) {
-  return CATALOG.find((m) => m.id === id) || IMAGE_CATALOG.find((m) => m.id === id);
+  if (!id) return null;
+  const cleanId = String(id).toLowerCase().trim();
+  const direct = CATALOG.find((m) => m.id.toLowerCase() === cleanId) || IMAGE_CATALOG.find((m) => m.id.toLowerCase() === cleanId);
+  if (direct) return direct;
+
+  // Smart aliases for flagship Claude tiers requested by Claude Code / Anthropic SDK
+  if (cleanId.includes("opus")) {
+    return CATALOG.find((m) => m.id === "claude-5.5-opus") || CATALOG.find((m) => m.id.includes("opus"));
+  }
+  if (cleanId.includes("haiku")) {
+    return CATALOG.find((m) => m.id === "claude-4.6-haiku") || CATALOG.find((m) => m.id.includes("haiku"));
+  }
+  if (cleanId.includes("sonnet")) {
+    return CATALOG.find((m) => m.id === "claude-5-sonnet") || CATALOG.find((m) => m.id.includes("sonnet"));
+  }
+  return CATALOG.find((m) => cleanId.includes(m.id.toLowerCase()));
 }
+

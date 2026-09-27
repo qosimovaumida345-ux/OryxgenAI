@@ -1669,13 +1669,13 @@ CRITICAL IDENTITY INSTRUCTIONS:
 });
 
 // =========================================================================
-  // ── ANTHROPIC MESSAGES API COMPATIBILITY (/v1/messages) ──
-  // Direct native integration for Claude Code CLI (claude), Claude Desktop, Cursor & Anthropic SDKs
-  // =========================================================================
-  app.post(["/v1/messages", "/api/v1/messages", "/messages"], apiKeyAuthMiddleware, async (req, res) => {
+// ── ANTHROPIC MESSAGES API COMPATIBILITY (/v1/messages) ──
+// Direct native integration for Claude Code CLI (claude), Claude Desktop, Cursor & Anthropic SDKs
+// =========================================================================
+app.post(["/v1/messages", "/api/v1/messages", "/messages", "/v1/v1/messages"], apiKeyAuthMiddleware, async (req, res) => {
     const startTime = Date.now();
     const {
-      model: requestedModel = "claude-4.6-sonnet",
+      model: requestedModel = "claude-5-sonnet",
       messages = [],
       system = "",
       max_tokens = 4096,
@@ -1688,83 +1688,108 @@ CRITICAL IDENTITY INSTRUCTIONS:
     const catalogModel = findModel(requestedModel) || {
       id: requestedModel,
       displayName: requestedModel,
-      company: "Oryxgen AI",
+      company: "Anthropic",
       capability: "code",
     };
 
-    let upstreamModel = requestedModel;
+    let candidates = [requestedModel];
     if (!requestedModel.includes("/")) {
-      const chain = await resolveUpstream(catalogModel.capability || "code", requestedModel);
-      upstreamModel = chain[0] || "nvidia/nemotron-3-ultra-550b-a55b:free";
+      candidates = await resolveUpstream(catalogModel.capability || "code", requestedModel);
     }
+    if (!candidates.length) {
+      candidates = ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3.5-lightning:free"];
+    }
+
     const clientAuthToken = (req.headers["authorization"] || "").replace(/^Bearer\s+/i, "").trim() || (req.headers["x-api-key"] || "").trim();
-    const effectiveKey = OR_KEY || (clientAuthToken.startsWith("sk-or-") ? clientAuthToken : "");
+    const effectiveKey = (clientAuthToken.startsWith("sk-or-") ? clientAuthToken : "") || OR_KEY;
 
-    try {
-      const upstreamRes = await fetch("https://openrouter.ai/api/v1/messages", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${effectiveKey}`,
-          "Content-Type": "application/json",
-          "anthropic-version": req.headers["anthropic-version"] || "2023-06-01",
-          "HTTP-Referer": "https://avg-ai-creator.site",
-          "X-Title": "Oryxgen AI Messages Gateway",
-        },
-        body: JSON.stringify({
-          model: upstreamModel,
-          messages,
-          system,
-          max_tokens,
-          temperature,
-          stream,
-          ...(tools ? { tools } : {}),
-        }),
-      });
+    let lastErrorText = "";
+    let success = false;
 
-      if (stream) {
-        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache, no-transform");
-        res.setHeader("Connection", "keep-alive");
-        res.flushHeaders?.();
-
-        if (!upstreamRes.ok || !upstreamRes.body) {
-          const errText = await upstreamRes.text().catch(() => "");
-          res.write(`event: error\ndata: ${JSON.stringify({ type: "error", error: { message: errText || "Upstream model error" } })}\n\n`);
-          return res.end();
-        }
-
-        const reader = upstreamRes.body.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        res.end();
-      } else {
-        const data = await upstreamRes.json();
-        res.status(upstreamRes.status).json(data);
-      }
-
-      // Log usage
-      const inTokens = Math.ceil((JSON.stringify(messages).length + (system?.length || 0)) / 4);
-      const durationMs = Date.now() - startTime;
-      await logApiUsage({
-        keyPrefix: req.apiKey.key_prefix,
-        userId: req.user.id,
-        model: catalogModel.displayName,
-        inputTokens: inTokens,
-        outputTokens: 50,
-        durationMs,
-      }).catch(() => { });
-    } catch (err) {
-      console.error("Messages endpoint error:", err.message);
-      if (!res.headersSent) {
-        res.status(500).json({
-          type: "error",
-          error: { type: "api_error", message: err.message },
+    for (const upstreamModel of candidates) {
+      try {
+        console.log(`[Messages API] Routing ${requestedModel} -> upstream: ${upstreamModel}`);
+        const upstreamRes = await fetch("https://openrouter.ai/api/v1/messages", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${effectiveKey}`,
+            "Content-Type": "application/json",
+            "anthropic-version": req.headers["anthropic-version"] || "2023-06-01",
+            "HTTP-Referer": "https://avg-ai-creator.site",
+            "X-Title": "Oryxgen AI Messages Gateway",
+          },
+          body: JSON.stringify({
+            model: upstreamModel,
+            messages,
+            system,
+            max_tokens,
+            temperature,
+            stream,
+            ...(tools ? { tools } : {}),
+          }),
         });
-      } else {
+
+        if (!upstreamRes.ok) {
+          lastErrorText = await upstreamRes.text().catch(() => "");
+          console.warn(`[Messages API] Upstream ${upstreamModel} rejected with HTTP ${upstreamRes.status}:`, lastErrorText);
+          continue;
+        }
+
+        if (stream) {
+          res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache, no-transform");
+          res.setHeader("Connection", "keep-alive");
+          res.flushHeaders?.();
+
+          const reader = upstreamRes.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(value);
+          }
+          res.end();
+        } else {
+          const data = await upstreamRes.json();
+          res.status(upstreamRes.status).json(data);
+        }
+
+        success = true;
+        // Log usage
+        const inTokens = Math.ceil((JSON.stringify(messages).length + (system?.length || 0)) / 4);
+        const durationMs = Date.now() - startTime;
+        await logApiUsage({
+          keyPrefix: req.apiKey.key_prefix,
+          userId: req.user.id,
+          model: catalogModel.displayName,
+          inputTokens: inTokens,
+          outputTokens: 50,
+          durationMs,
+        }).catch(() => { });
+
+        break;
+      } catch (err) {
+        console.warn(`[Messages API] Connection error for ${upstreamModel}:`, err.message);
+        lastErrorText = err.message;
+      }
+    }
+
+    if (!success) {
+      if (stream) {
+        if (!res.headersSent) {
+          res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+          res.flushHeaders?.();
+        }
+        res.write(`event: error\ndata: ${JSON.stringify({ type: "error", error: { message: lastErrorText || "Barcha bepul modellar hozirda band. Iltimos, bir ozdan keyin qayta urinib ko'ring." } })}\n\n`);
         res.end();
+      } else {
+        if (!res.headersSent) {
+          res.status(502).json({
+            type: "error",
+            error: { type: "api_error", message: lastErrorText || "Barcha upstream modellar band." },
+          });
+        } else {
+          res.end();
+        }
       }
     }
   });

@@ -1,48 +1,50 @@
+// Restricted models that require private harnesses or frequently return 403 / 429
+const RESTRICTED_MODELS = new Set([
+  "thinkingmachines/inkling:free",
+  "thinkingmachines/inkling-small:free",
+  "poolside/laguna-s-2.1:free",
+  "poolside/laguna-xs-2.1:free",
+]);
+
 // Fallback curated list of high-reliability free endpoints on OpenRouter
 const FALLBACK_FREE_MODELS = [
-  "poolside/laguna-s-2.1:free",
-  "thinkingmachines/inkling:free",
-  "qwen/qwen3.8-27b:free",
-  "cohere/north-mini-code:free",
-  "poolside/laguna-xs-2.1:free",
-  "thinkingmachines/inkling-small:free",
   "nvidia/nemotron-3-ultra-550b-a55b:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
   "nvidia/nemotron-3.5-lightning:free",
   "google/gemma-4-31b-it:free",
   "google/gemma-4-26b-a4b-it:free",
+  "qwen/qwen3.8-27b:free",
+  "cohere/north-mini-code:free",
   "openrouter/free",
 ];
 
 const BY_CAPABILITY = {
   reason: [
-    "thinkingmachines/inkling:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "qwen/qwen3.8-27b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "google/gemma-4-31b-it:free",
     "openrouter/free",
   ],
   code: [
-    "poolside/laguna-s-2.1:free",
-    "thinkingmachines/inkling:free",
-    "qwen/qwen3.8-27b:free",
-    "cohere/north-mini-code:free",
-    "poolside/laguna-xs-2.1:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "cohere/north-mini-code:free",
+    "google/gemma-4-31b-it:free",
     "openrouter/free",
   ],
   vision: [
     "google/gemma-4-31b-it:free",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "google/gemma-4-26b-a4b-it:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "openrouter/free",
   ],
   chat: [
-    "qwen/qwen3.8-27b:free",
-    "thinkingmachines/inkling:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
     "google/gemma-4-31b-it:free",
-    "google/gemma-4-26b-a4b-it:free",
     "openrouter/free",
   ],
 };
@@ -60,7 +62,7 @@ export async function refreshFreeModels() {
       const id = m.id || "";
       const p = m.pricing || {};
       const isFreePrice = String(p.prompt) === "0" && String(p.completion) === "0";
-      if (isFreePrice || id.endsWith(":free") || id === "openrouter/free") {
+      if ((isFreePrice || id.endsWith(":free") || id === "openrouter/free") && !RESTRICTED_MODELS.has(id)) {
         liveFreeIds.push(id);
         const maxOut = m.top_provider?.max_completion_tokens || m.per_request_limits?.max_completion_tokens;
         if (maxOut && typeof maxOut === "number") {
@@ -72,7 +74,7 @@ export async function refreshFreeModels() {
     if (liveFreeIds.length) {
       cachedFree = {
         at: Date.now(),
-        ids: [...new Set([...liveFreeIds, ...FALLBACK_FREE_MODELS])],
+        ids: [...new Set([...liveFreeIds, ...FALLBACK_FREE_MODELS])].filter((id) => !RESTRICTED_MODELS.has(id)),
       };
       console.log(`[OpenRouter] Discovered ${liveFreeIds.length} live free models.`);
     }
@@ -88,11 +90,9 @@ export function getModelMaxTokens(modelId = "") {
   }
   const lower = modelId.toLowerCase();
   if (lower.includes("qwen")) return 131072;
-  if (lower.includes("inkling")) return 131072;
   if (lower.includes("nemotron")) return 65536;
   if (lower.includes("cohere") || lower.includes("north")) return 64000;
   if (lower.includes("gemma")) return 32768;
-  if (lower.includes("laguna") || lower.includes("poolside")) return 32768;
   if (lower.includes("liquid") || lower.includes("lfm")) return 8192;
   return 32768;
 }
@@ -107,37 +107,34 @@ export async function getFreePool() {
 export async function resolveUpstream(capability = "chat", requestedModelId = "") {
   const pool = new Set(await getFreePool());
   
-  // Check if requested model itself is directly in the free pool
-  if (pool.has(requestedModelId) || pool.has(`${requestedModelId}:free`)) {
+  // Check if requested model itself is directly in the free pool and unrestricted
+  if ((pool.has(requestedModelId) || pool.has(`${requestedModelId}:free`)) && !RESTRICTED_MODELS.has(requestedModelId)) {
     const directId = pool.has(requestedModelId) ? requestedModelId : `${requestedModelId}:free`;
-    return [directId, "openrouter/free"];
+    return [directId, "nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter/free"];
   }
 
   const preferred = BY_CAPABILITY[capability] || BY_CAPABILITY.chat;
-  const picked = preferred.filter((id) => pool.has(id) || id === "openrouter/free");
-  const extras = FALLBACK_FREE_MODELS.filter((id) => pool.has(id) || id.endsWith(":free") || id === "openrouter/free");
+  const picked = preferred.filter((id) => (pool.has(id) || id === "openrouter/free") && !RESTRICTED_MODELS.has(id));
+  const extras = FALLBACK_FREE_MODELS.filter((id) => (pool.has(id) || id.endsWith(":free") || id === "openrouter/free") && !RESTRICTED_MODELS.has(id));
 
-  const chain = [...new Set([...picked, ...extras, "openrouter/free"])];
+  const chain = [...new Set([...picked, ...extras, "openrouter/free"])].filter((id) => !RESTRICTED_MODELS.has(id));
   return chain;
 }
 
 // Config-driven ranking of best free models for code generation and multi-file project synthesis
 export const CODEX_RANKED_MODELS = [
-  "poolside/laguna-s-2.1:free",
-  "thinkingmachines/inkling:free",
-  "qwen/qwen3.8-27b:free",
-  "cohere/north-mini-code:free",
-  "poolside/laguna-xs-2.1:free",
   "nvidia/nemotron-3-ultra-550b-a55b:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3.5-lightning:free",
   "google/gemma-4-31b-it:free",
+  "cohere/north-mini-code:free",
   "openrouter/free",
 ];
 
 export async function resolveBestCodeModel() {
   const pool = new Set(await getFreePool());
-  const viable = CODEX_RANKED_MODELS.filter((id) => pool.has(id) || id === "openrouter/free");
-  return [...new Set([...viable, ...CODEX_RANKED_MODELS, "openrouter/free"])];
+  const viable = CODEX_RANKED_MODELS.filter((id) => (pool.has(id) || id === "openrouter/free") && !RESTRICTED_MODELS.has(id));
+  return [...new Set([...viable, ...CODEX_RANKED_MODELS, "openrouter/free"])].filter((id) => !RESTRICTED_MODELS.has(id));
 }
 
 export function pollinationsModel(displayId = "") {
@@ -156,3 +153,4 @@ export function pollinationsModel(displayId = "") {
   }
   return "flux";
 }
+
