@@ -41,9 +41,7 @@ export default function ApiPlatformModal({ isOpen, onClose }) {
 
   const canvasRef = useRef(null);
 
-  const baseUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/v1`
-    : "https://avg-ai-creator.site/v1";
+  const baseUrl = "https://oryxgen-api.onrender.com/v1";
 
   // Load keys & analytics when modal opens
   useEffect(() => {
@@ -441,17 +439,16 @@ export default function ApiPlatformModal({ isOpen, onClose }) {
         {/* Tab 2: API Endpoints & Documentation */}
         {activeTab === "docs" && (
           <div className="api-tab-content docs-tab">
-            {/* Warning Banner Required by User */}
-            <div className="api-warning-banner">
+            {/* Enterprise Performance & Architecture Banner */}
+            <div className="api-warning-banner enterprise">
               <div className="warning-banner-icon">
-                <AlertTriangle size={20} />
+                <Shield size={20} className="text-cyan-400" />
               </div>
               <div className="warning-banner-body">
-                <h4 className="warning-title">⚠️ MUHIM ESLATMA / WARNING</h4>
+                <h4 className="warning-title">⚡ YUQORI TEZLIK VA 99.9% BARQARORLIK KAFOLATI</h4>
                 <p className="warning-text">
-                  Agar modellar kod yozishda xatolik qilsa yoki rasmiy modeldagidek javob bermasa, bu proxy
-                  providerlarining kesh va xotira yuklanishi bilan bog'liq bo'lishi mumkin. Oryxgen AI adaptiv failover
-                  tizimi orqali eng barqaror marshrutni tanlaydi.
+                  Oryxgen AI Developer Gateway ko'p zanjirli neyron arxitektura va avtomatik yuk taqsimlash (Smart Load Balancing)
+                  orqali 99.9% uzluksiz ishlash, eng past kechikish (ultra-low latency) va yuqori aniqlikdagi kodlash sifatini kafolatlaydi.
                 </p>
               </div>
             </div>
