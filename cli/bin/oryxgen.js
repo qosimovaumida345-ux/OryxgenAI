@@ -426,6 +426,11 @@ async function handleChat(args) {
             if (dataStr !== "[DONE]") {
               try {
                 const parsed = JSON.parse(dataStr);
+                if (parsed.error) {
+                  const errMsg = typeof parsed.error === "object" ? parsed.error.message || JSON.stringify(parsed.error) : parsed.error;
+                  console.log(`\n${C.rose}❌ Server xatosi: ${errMsg}${C.reset}`);
+                  break;
+                }
                 const delta = parsed.choices?.[0]?.delta?.content || "";
                 if (delta) {
                   assistantText += delta;
