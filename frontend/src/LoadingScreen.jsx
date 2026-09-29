@@ -18,7 +18,7 @@ export default function LoadingScreen({ message = "Server bilan xavfsiz ulanish 
           <div className="loading-ring-outer" />
           <div className="loading-ring-inner" />
           <div className="loading-core-logo">
-            <img src="/Logo.png" alt="Oryxgen Logo" className="loading-logo-img" />
+            <img src="./Logo.png" alt="Oryxgen Logo" className="loading-logo-img" />
           </div>
         </div>
 

@@ -21,6 +21,7 @@ import LoadingScreen from "./LoadingScreen";
 import { CompanyLogo } from "./Logos";
 import StructureViewer, { isDirectoryTreeCode } from "./StructureViewer";
 import ApiPlatformModal from "./ApiPlatformModal";
+import DesktopDeviceModal from "./DesktopDeviceModal";
 import "./Chat.css";
 
 const DEFAULT_MODEL = "claude-4.6-opus";
@@ -380,6 +381,7 @@ export default function Chat() {
   const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
   const [mcpCopied, setMcpCopied] = useState(false);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
 
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [searchModel, setSearchModel] = useState("");
@@ -388,8 +390,14 @@ export default function Chat() {
   const [currentUser, setCurrentUser] = useState(getStoredUser());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isBackendLoading, setIsBackendLoading] = useState(true);
-  const [copiedCodeId, setCopiedCodeId] = useState(null);
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
+  const [showDesktopAuthBanner, setShowDesktopAuthBanner] = useState(() => {
+    try {
+      return typeof window !== "undefined" && new URLSearchParams(window.location.search).has("auth_desktop");
+    } catch {
+      return false;
+    }
+  });
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -881,11 +889,46 @@ export default function Chat() {
 
   return (
     <div className="chat-layout">
+      {/* Desktop App Auth Redirect Banner for Web Users */}
+      {showDesktopAuthBanner && currentUser && (
+        <div className="desktop-auth-top-banner">
+          <div className="desktop-auth-content">
+            <span className="desktop-auth-icon">🖥️</span>
+            <div className="desktop-auth-text">
+              <strong>Oryxgen Desktop ilovasi uchun kirish tasdiqlandi:</strong>
+              <span>{currentUser.name || currentUser.email} sifatida kirdingiz</span>
+            </div>
+            <button
+              type="button"
+              className="desktop-auth-open-btn"
+              onClick={() => {
+                const token = localStorage.getItem("oryxgen_token") || "";
+                const userJson = encodeURIComponent(JSON.stringify(currentUser));
+                window.location.href = `oryxgen://auth?token=${encodeURIComponent(token)}&user=${userJson}`;
+                setTimeout(() => {
+                  try { window.close(); } catch {}
+                }, 1200);
+              }}
+            >
+              Desktop Ilovada Ochish ↗
+            </button>
+            <button
+              type="button"
+              className="desktop-auth-close-btn"
+              onClick={() => setShowDesktopAuthBanner(false)}
+              title="Yopish"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className={`chat-sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-header">
           <Link to="/" className="sidebar-brand">
-            <img src="/Logo.png" alt="Oryxgen Logo" className="chat-brand-logo" />
+            <img src="./Logo.png" alt="Oryxgen Logo" className="chat-brand-logo" />
             <span>
               Oryxgen <span className="brand-suffix">AI</span>
             </span>
@@ -957,6 +1000,15 @@ export default function Chat() {
               <path d="M16 12l-4 4-4-4M12 8v7" />
             </svg>
             MCP Server (Claude / Cursor)
+          </button>
+          <button
+            type="button"
+            className="sidebar-tool-btn"
+            style={{ color: "#00f0ff" }}
+            onClick={() => setIsDeviceModalOpen(true)}
+          >
+            <span style={{ fontSize: "14px", marginRight: "3px" }}>🛡️</span>
+            Device Access & Computer Use
           </button>
           <Link to="/image" className="sidebar-tool-btn">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1089,9 +1141,29 @@ export default function Chat() {
               >
                 ⚡ API Platformasi
               </button>
+              <button
+                type="button"
+                className="nav-btn-action"
+                style={{ borderColor: "rgba(0, 240, 255, 0.4)", color: "#00f0ff" }}
+                onClick={() => setIsDeviceModalOpen(true)}
+                title="Device Access & Computer Use"
+              >
+                🛡️ Device Access
+              </button>
               <Link to="/image" className="nav-btn-action">
                 Tasvir
               </Link>
+              {typeof window !== "undefined" && !(window.oryxgenDesktop || window.electronAPI) && (
+                <a
+                  href="./download/OryxgenSetup.exe"
+                  download="OryxgenSetup.exe"
+                  className="nav-btn-action"
+                  style={{ borderColor: "rgba(56, 189, 248, 0.45)", color: "#38bdf8" }}
+                  title="Oryxgen AI Desktop ilovasini kompyuteringizga o'rnating (.exe)"
+                >
+                  📥 Desktop Ilova
+                </a>
+              )}
               {!currentUser && (
                 <button
                   type="button"
@@ -1109,7 +1181,7 @@ export default function Chat() {
             {messages.length === 0 ? (
               <div className="chat-empty-state">
                 <div className="empty-logo-circle">
-                  <img src="/Logo.png" alt="Oryxgen Logo" className="empty-brand-logo" />
+                  <img src="./Logo.png" alt="Oryxgen Logo" className="empty-brand-logo" />
                 </div>
                 <h2>Oryxgen AI</h2>
                 <p className="empty-sub">
@@ -1581,6 +1653,12 @@ export default function Chat() {
       <ApiPlatformModal
         isOpen={isApiModalOpen}
         onClose={() => setIsApiModalOpen(false)}
+      />
+
+      {/* Desktop Device Access & Computer Use Modal */}
+      <DesktopDeviceModal
+        isOpen={isDeviceModalOpen}
+        onClose={() => setIsDeviceModalOpen(false)}
       />
 
       {/* Authentication Modal - Guard */}

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import emailjs from "@emailjs/browser";
-import { fetchGoogleAuthUrl, googleAuth, sendAuthCode, verifyAuthCode } from "./api";
+import { fetchGoogleAuthUrl, googleAuth, sendAuthCode, verifyAuthCode, loginWithApiKey, setAuthSession } from "./api";
 import "./AuthModal.css";
 
 // Optional default EmailJS environment keys (can be configured in .env or dynamically)
@@ -23,6 +23,7 @@ const COUNTRY_CODES = [
 ];
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = true }) {
+  const isDesktop = typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI);
   const [tab, setTab] = useState("email"); // "email" | "phone" | "google"
   const [step, setStep] = useState(1); // 1: target input, 2: OTP verification
   const [emailInput, setEmailInput] = useState("");
@@ -30,9 +31,29 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [waitingDesktopAuth, setWaitingDesktopAuth] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successInfo, setSuccessInfo] = useState("");
+
+  // Listen to deep-link authentication in Desktop mode
+  useEffect(() => {
+    if (!isDesktop) return;
+    const desktopApi = window.oryxgenDesktop || window.electronAPI;
+    if (desktopApi?.onAuthDeepLink) {
+      const unsubscribe = desktopApi.onAuthDeepLink((data) => {
+        if (data?.token && data?.user) {
+          setAuthSession(data.token, data.user);
+          onAuthSuccess(data.user);
+          if (onClose) onClose();
+        }
+      });
+      return () => {
+        if (typeof unsubscribe === "function") unsubscribe();
+      };
+    }
+  }, [isDesktop, onAuthSuccess, onClose]);
 
   if (!isOpen) return null;
 
@@ -138,6 +159,37 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
     }
   };
 
+  const handleDesktopGoogleLogin = () => {
+    setError("");
+    setWaitingDesktopAuth(true);
+    const desktopApi = window.oryxgenDesktop || window.electronAPI;
+    const targetUrl = "https://avg-ai-creator.site/app?auth_desktop=1";
+    if (desktopApi?.openExternal) {
+      desktopApi.openExternal(targetUrl);
+    } else {
+      window.open(targetUrl, "_blank");
+    }
+  };
+
+  const handleDesktopApiKeyLogin = async (e) => {
+    e.preventDefault();
+    if (!apiKeyInput.trim()) {
+      setError("Iltimos, Oryxgen API kalitingizni kiriting.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await loginWithApiKey(apiKeyInput.trim());
+      onAuthSuccess(res.user);
+      if (onClose) onClose();
+    } catch (err) {
+      setError(err.message || "API kalit orqali kirib bo'lmadi");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="auth-backdrop" onClick={closable ? onClose : undefined}>
       <div className="auth-card" onClick={(e) => e.stopPropagation()}>
@@ -149,158 +201,223 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
 
         <div className="auth-header">
           <div className="auth-logo-badge">
-            <img src="/Logo.png" alt="Oryxgen Logo" className="auth-brand-logo" />
+            <img src="./Logo.png" alt="Oryxgen Logo" className="auth-brand-logo" />
           </div>
           <h3>Oryxgen AI</h3>
-          <p>200+ AI modellar va professional generatsiyaga kirish</p>
+          <p>{isDesktop ? "Autonomous Desktop, CodeX & AI Platform" : "200+ AI modellar va professional generatsiyaga kirish"}</p>
         </div>
 
         {error && <div className="auth-error-box">{error}</div>}
         {successInfo && <div className="auth-success-box">{successInfo}</div>}
 
-        <div className="auth-tabs">
-          <button
-            type="button"
-            className={`auth-tab ${tab === "email" ? "active" : ""}`}
-            onClick={() => {
-              setTab("email");
-              setStep(1);
-              setError("");
-              setSuccessInfo("");
-            }}
-          >
-            Gmail / Email
-          </button>
-          <button
-            type="button"
-            className={`auth-tab ${tab === "phone" ? "active" : ""}`}
-            onClick={() => {
-              setTab("phone");
-              setStep(1);
-              setError("");
-              setSuccessInfo("");
-            }}
-          >
-            Telefon raqam
-          </button>
-          <button
-            type="button"
-            className={`auth-tab ${tab === "google" ? "active" : ""}`}
-            onClick={() => {
-              setTab("google");
-              setStep(1);
-              setError("");
-              setSuccessInfo("");
-            }}
-          >
-            Google
-          </button>
-        </div>
-
-        {tab === "google" ? (
-          <div className="auth-form-google">
-            <p className="google-desc">Google hisobingiz orqali zudlik bilan kiring:</p>
-            <div className="auth-field">
-              <label>Ism / Familiya (ixtiyoriy):</label>
-              <input
-                type="text"
-                placeholder="Masalan: Umida Qosimova"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+        {isDesktop ? (
+          /* Desktop App Specific Login: Single Google Sign-In or API Key */
+          waitingDesktopAuth ? (
+            <div className="auth-waiting-box">
+              <div className="auth-spinner" />
+              <h4>Brauzerda sayt ochildi...</h4>
+              <p>
+                Brauzeringizda rasmiy sayt ochildi. U yerda tizimga kiring va sahifa tepasidagi{" "}
+                <strong>"Desktop ilovada ochish"</strong> tugmasini bosing.
+              </p>
+              <button
+                type="button"
+                className="auth-cancel-waiting-btn"
+                onClick={() => setWaitingDesktopAuth(false)}
+              >
+                Ortga qaytish
+              </button>
             </div>
-            <button
-              type="button"
-              className="google-action-btn"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-            >
-              <svg viewBox="0 0 24 24" width="18" height="18">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
-              </svg>
-              {loading ? "Kirilmoqda..." : "Google orqali davom etish"}
-            </button>
-          </div>
-        ) : step === 1 ? (
-          <form onSubmit={handleSendCode} className="auth-form">
-            {tab === "email" ? (
-              <div className="auth-field">
-                <label>Email manzili:</label>
-                <input
-                  type="email"
-                  placeholder="nomi@gmail.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  autoFocus
-                  required
-                />
+          ) : (
+            <div className="auth-body-simple">
+              {/* Single main login button */}
+              <button
+                type="button"
+                className="google-action-btn primary-login-btn"
+                onClick={handleDesktopGoogleLogin}
+                disabled={loading}
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
+                </svg>
+                <span>{loading ? "Kirilmoqda..." : "Google orqali kirish (Sign in with Google)"}</span>
+              </button>
+
+              <div className="auth-divider">
+                <span>Yoki boshqa usulda / In another way</span>
               </div>
-            ) : (
-              <div className="auth-field">
-                <label>Telefon raqam:</label>
-                <div className="phone-input-group">
-                  <select
-                    className="country-select"
-                    value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
-                  >
-                    {COUNTRY_CODES.map((c) => (
-                      <option key={c.code + c.country} value={c.code}>
-                        {c.code} ({c.country})
-                      </option>
-                    ))}
-                  </select>
+
+              <form onSubmit={handleDesktopApiKeyLogin} className="auth-apikey-form">
+                <div className="auth-field">
+                  <label>Oryxgen API Key bilan kirish:</label>
+                  <div className="apikey-input-wrapper">
+                    <input
+                      type="password"
+                      placeholder="oryx_live_..."
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <button type="submit" className="apikey-submit-btn" disabled={loading}>
+                      Kirish
+                    </button>
+                  </div>
+                  <span className="apikey-hint">API Key orqali unga tegishli akkaunt nomidan to'g'ridan-to'g'ri kiriladi.</span>
+                </div>
+              </form>
+            </div>
+          )
+        ) : (
+          /* Original Website UI: Tabs (Gmail, Telefon, Google) 100% UNTOUCHED */
+          <>
+            <div className="auth-tabs">
+              <button
+                type="button"
+                className={`auth-tab ${tab === "email" ? "active" : ""}`}
+                onClick={() => {
+                  setTab("email");
+                  setStep(1);
+                  setError("");
+                  setSuccessInfo("");
+                }}
+              >
+                Gmail / Email
+              </button>
+              <button
+                type="button"
+                className={`auth-tab ${tab === "phone" ? "active" : ""}`}
+                onClick={() => {
+                  setTab("phone");
+                  setStep(1);
+                  setError("");
+                  setSuccessInfo("");
+                }}
+              >
+                Telefon raqam
+              </button>
+              <button
+                type="button"
+                className={`auth-tab ${tab === "google" ? "active" : ""}`}
+                onClick={() => {
+                  setTab("google");
+                  setStep(1);
+                  setError("");
+                  setSuccessInfo("");
+                }}
+              >
+                Google
+              </button>
+            </div>
+
+            {tab === "google" ? (
+              <div className="auth-form-google">
+                <p className="google-desc">Google hisobingiz orqali zudlik bilan kiring:</p>
+                <div className="auth-field">
+                  <label>Ism / Familiya (ixtiyoriy):</label>
                   <input
-                    type="tel"
-                    placeholder="90 123 45 67"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    type="text"
+                    placeholder="Masalan: Umida Qosimova"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="google-action-btn"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
+                  </svg>
+                  {loading ? "Kirilmoqda..." : "Google orqali davom etish"}
+                </button>
+              </div>
+            ) : step === 1 ? (
+              <form onSubmit={handleSendCode} className="auth-form">
+                {tab === "email" ? (
+                  <div className="auth-field">
+                    <label>Email manzili:</label>
+                    <input
+                      type="email"
+                      placeholder="nomi@gmail.com"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      autoFocus
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div className="auth-field">
+                    <label>Telefon raqam:</label>
+                    <div className="phone-input-group">
+                      <select
+                        className="country-select"
+                        value={countryCode}
+                        onChange={(e) => setCountryCode(e.target.value)}
+                      >
+                        {COUNTRY_CODES.map((c) => (
+                          <option key={c.code + c.country} value={c.code}>
+                            {c.code} ({c.country})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="tel"
+                        placeholder="90 123 45 67"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="auth-field">
+                  <label>Ismingiz (ixtiyoriy):</label>
+                  <input
+                    type="text"
+                    placeholder="Ismingizni kiriting"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="auth-submit-btn" disabled={loading}>
+                  {loading ? "Yuborilmoqda..." : "Tasdiqlash kodini olish"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyCode} className="auth-form">
+                <p className="code-sent-info">
+                  Kod yuborildi: <strong>{targetValue}</strong>
+                  <button type="button" className="change-target-btn" onClick={() => setStep(1)}>
+                    (O'zgartirish)
+                  </button>
+                </p>
+                <div className="auth-field">
+                  <label>6 xonali tasdiqlash kodi:</label>
+                  <input
+                    type="text"
+                    placeholder="123456"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
                     autoFocus
                     required
                   />
                 </div>
-              </div>
+                <button type="submit" className="auth-submit-btn" disabled={loading}>
+                  {loading ? "Tekshirilmoqda..." : "Kirish & Tasdiqlash"}
+                </button>
+              </form>
             )}
-            <div className="auth-field">
-              <label>Ismingiz (ixtiyoriy):</label>
-              <input
-                type="text"
-                placeholder="Ismingizni kiriting"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="auth-submit-btn" disabled={loading}>
-              {loading ? "Yuborilmoqda..." : "Tasdiqlash kodini olish"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerifyCode} className="auth-form">
-            <p className="code-sent-info">
-              Kod yuborildi: <strong>{targetValue}</strong>
-              <button type="button" className="change-target-btn" onClick={() => setStep(1)}>
-                (O'zgartirish)
-              </button>
-            </p>
-            <div className="auth-field">
-              <label>6 xonali tasdiqlash kodi:</label>
-              <input
-                type="text"
-                placeholder="123456"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                autoFocus
-                required
-              />
-            </div>
-            <button type="submit" className="auth-submit-btn" disabled={loading}>
-              {loading ? "Tekshirilmoqda..." : "Kirish & Tasdiqlash"}
-            </button>
-          </form>
+          </>
         )}
 
         <div className="auth-footer-note">

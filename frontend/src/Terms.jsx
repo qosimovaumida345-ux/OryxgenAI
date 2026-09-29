@@ -6,7 +6,7 @@ export default function Terms() {
     <div className="legal-page-container">
       <div className="legal-header-nav">
         <Link to="/" className="legal-brand-badge">
-          <img src="/Logo.png" alt="Oryxgen AI Logo" />
+          <img src="./Logo.png" alt="Oryxgen AI Logo" />
           <span>Oryxgen AI</span>
         </Link>
         <Link to="/" className="legal-back-btn">

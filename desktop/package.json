@@ -1,0 +1,14 @@
+{
+  "name": "oryxgen-ai-desktop",
+  "version": "2.5.0",
+  "description": "Oryxgen AI — Autonomous Desktop & CodeX Platform",
+  "main": "main.cjs",
+  "author": "Oryxgen AI Team",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^44.5.0"
+  }
+}

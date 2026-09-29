@@ -155,7 +155,7 @@ export default function ImageStudio() {
       <header className="studio-header">
         <div className="header-left">
           <Link to="/" className="studio-logo">
-            <img src="/Logo.png" alt="Oryxgen Logo" className="studio-brand-logo" />
+            <img src="./Logo.png" alt="Oryxgen Logo" className="studio-brand-logo" />
             <span>Oryxgen<small className="logo-suffix">.ai</small></span>
           </Link>
           <span className="pollinations-badge">Pollinations AI Engine</span>

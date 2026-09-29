@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import JSZip from "jszip";
+import path from "path";
+import fs from "fs";
 import { findModel, PUBLIC_IMAGE_MODELS, PUBLIC_MODELS, CATALOG } from "./catalog.js";
 import { pollinationsModel, refreshFreeModels, resolveUpstream, resolveBestCodeModel, getFreePool, getModelMaxTokens } from "./mapper.js";
 import {
@@ -110,6 +112,22 @@ app.get("/", (_req, res) => {
   `);
 });
 
+// Desktop installer download endpoint
+app.get("/download/OryxgenSetup.exe", (req, res) => {
+  const possiblePaths = [
+    path.join(process.cwd(), "frontend", "public", "download", "OryxgenSetup.exe"),
+    path.join(process.cwd(), "frontend", "dist", "download", "OryxgenSetup.exe"),
+    path.join(process.cwd(), "desktop", "OryxgenSetup.exe"),
+    path.join(process.cwd(), "..", "desktop", "OryxgenSetup.exe"),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      return res.download(p, "OryxgenSetup.exe");
+    }
+  }
+  res.status(404).send("OryxgenSetup.exe topilmadi");
+});
+
 // Health check endpoint
 app.get("/health", (_req, res) => {
   res.json({
@@ -181,8 +199,12 @@ app.post("/api/chat", authMiddleware, async (req, res) => {
   }
 
   // Mandatory Model Identity Persona
-  const modelPersona = `You are "${meta.displayName}" created by ${meta.company}. You are running inside Oryxgen AI platform.
-CRITICAL INSTRUCTION: If the user asks who you are, what model you are, which company made you, or what your name is, you MUST ALWAYS respond that you are "${meta.displayName}" by ${meta.company}. NEVER reveal any other internal model name or underlying provider. Maintain this identity strictly and consistently in all languages (O'zbek, English, Russian, etc.).`;
+  const modelPersona = `You are "${meta.displayName}" created by ${meta.company}. You are running inside Oryxgen AI platform (https://avg-ai-creator.site).
+CRITICAL IDENTITY INSTRUCTIONS:
+- If the user asks who you are, what model you are, or who created you, you MUST ALWAYS answer: "I am ${meta.displayName} by ${meta.company}, running on Oryxgen AI."
+- NEVER reveal, mention, or hint at any underlying infrastructure names such as: Nemotron, Gemma, Qwen, LLaMA, OpenRouter, Pollinations, or any open-source backend model name.
+- You are NOT an open-source model. You are ${meta.displayName} by ${meta.company}.
+- Maintain this identity strictly and consistently in ALL languages (O'zbek, English, Russian, etc.).`;
 
   const preparedMessages = [
     { role: "system", content: modelPersona }
@@ -1374,11 +1396,12 @@ app.post("/v1/chat/completions", apiKeyAuthMiddleware, async (req, res) => {
   // Enforce Oryxgen persona injection so models never reveal raw open-source backend names
   const brandSystemMessage = {
     role: "system",
-    content: `You are ${catalogModel.displayName}, an advanced artificial intelligence model developed by ${catalogModel.company || "Oryxgen AI"} and powered by the Oryxgen AI platform.
+    content: `You are "${catalogModel.displayName}", an advanced AI model developed by ${catalogModel.company || "Oryxgen AI"} and powered by the Oryxgen AI platform (https://avg-ai-creator.site).
 CRITICAL IDENTITY INSTRUCTIONS:
 - Whenever asked who you are, what model you are, or who created you, you must declare that you are "${catalogModel.displayName}" developed by ${catalogModel.company || "Oryxgen AI"} on Oryxgen AI.
-- NEVER claim or state that you are an open-source model (such as Llama, Qwen, Mistral, Gemma, Nemotron, DeepSeek) or mention OpenRouter/Pollinations proxy infrastructure, unless that is your official identity.
-- Provide comprehensive, accurate, high-quality answers and code.`,
+- NEVER reveal, mention, or hint at any underlying infrastructure names such as: Nemotron, Gemma, Qwen, LLaMA, OpenRouter, Pollinations, or any open-source backend.
+- You are NOT an open-source model. You are ${catalogModel.displayName}.
+- Provide comprehensive, accurate, high-quality answers and code in any language (English, O'zbek, Russian, etc.).`,
   };
 
   const finalMessages = [brandSystemMessage, ...messages];
@@ -1440,6 +1463,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
                   } else {
                     try {
                       const parsed = JSON.parse(dataStr);
+                      // Sanitize: replace upstream model name with Oryxgen catalog ID
+                      if (parsed.model) parsed.model = catalogModel.id;
                       const deltaContent = parsed.choices?.[0]?.delta?.content || "";
                       if (deltaContent) fullGeneratedText += deltaContent;
                       res.write(`data: ${JSON.stringify(parsed)}\n\n`);
@@ -1496,6 +1521,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
                 } else {
                   try {
                     const parsed = JSON.parse(dataStr);
+                    // Sanitize: replace upstream model name with Oryxgen catalog ID
+                    if (parsed.model) parsed.model = catalogModel.id;
                     const deltaContent = parsed.choices?.[0]?.delta?.content || "";
                     if (deltaContent) fullGeneratedText += deltaContent;
                     res.write(`data: ${JSON.stringify(parsed)}\n\n`);
@@ -1675,7 +1702,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
 app.post(["/v1/messages", "/api/v1/messages", "/messages", "/v1/v1/messages"], apiKeyAuthMiddleware, async (req, res) => {
     const startTime = Date.now();
     const {
-      model: requestedModel = "claude-5-sonnet",
+      model: requestedModel = "claude-sonnet-5.5",
       messages = [],
       system = "",
       max_tokens = 4096,

@@ -82,7 +82,7 @@ export default function Landing() {
         <div className="menu-backdrop" onClick={() => document.body.classList.remove("menu-open")} />
         <header className="header">
           <a className="logo appear appear--scale" href="#top" aria-label="Oryxgen AI" style={{ "--d": "0.08s" }}>
-            <img src="/Logo.png" alt="Oryxgen Logo" className="landing-brand-logo" />
+            <img src="./Logo.png" alt="Oryxgen Logo" className="landing-brand-logo" />
             Oryxgen<span className="logo-suffix">.ai</span>
           </a>
           <nav id="site-nav" aria-label="Asosiy menyu">
@@ -97,6 +97,9 @@ export default function Landing() {
             </Link>
             <a className="nav-link appear appear--soft" href="#mcp-info" style={{ "--d": "0.52s" }}>
               MCP Server
+            </a>
+            <a className="nav-link appear appear--scale" href="./download/OryxgenSetup.exe" download="OryxgenSetup.exe" style={{ "--d": "0.58s", color: "#38bdf8" }}>
+              📥 Desktop (.exe)
             </a>
           </nav>
           <Link className="btn btn-solid header-cta appear appear--scale" to="/app" style={{ "--d": "0.34s" }}>
@@ -135,6 +138,9 @@ export default function Landing() {
               <Link className="btn btn-hero-ghost appear appear--side" to="/image" style={{ "--d": "1.10s" }}>
                 Tasvir yaratish
               </Link>
+              <a className="btn btn-hero-ghost appear appear--side" href="./download/OryxgenSetup.exe" download="OryxgenSetup.exe" style={{ "--d": "1.20s", borderColor: "rgba(56, 189, 248, 0.4)", color: "#38bdf8" }}>
+                📥 Desktop App (.exe)
+              </a>
             </div>
           </div>
         </main>

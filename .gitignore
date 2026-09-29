@@ -8,3 +8,12 @@ backend/.env
 /cli/.npmrc
 scratch**
 brag-output**
+telegram-agent/.env
+
+# Desktop build binaries and archives (>100MB)
+desktop/app-build/
+desktop/payload.zip
+*.exe
+*.zip
+frontend/public/download/*.exe
+frontend/dist/

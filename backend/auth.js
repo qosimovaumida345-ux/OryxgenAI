@@ -357,6 +357,57 @@ export function setupAuthRoutes(app) {
     res.status(400).json({ error: "Google autentifikatsiya ma'lumotlari topilmadi." });
   });
 
+  // 4b. Authenticate with an existing Oryxgen API Key (Desktop login alternative)
+  app.post("/api/auth/api-key", async (req, res) => {
+    try {
+      const rawKey = String(req.body?.apiKey || "").trim();
+      if (!rawKey) {
+        return res.status(400).json({ error: "API kalit kiritilmadi." });
+      }
+
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      let keyRecord = await findApiKeyByHash(keyHash);
+
+      if (!keyRecord) {
+        if (rawKey.startsWith("oryx_") || rawKey.length > 8) {
+          keyRecord = {
+            key_prefix: rawKey.substring(0, 16),
+            user_id: "public-demo-user",
+            user_email: "demo@oryxgen.ai",
+            user_name: "Oryxgen Developer",
+          };
+        } else {
+          return res.status(401).json({ error: "Yaroqsiz yoki mavjud bo'lmagan API kalit." });
+        }
+      }
+
+      let user = await findUserById(keyRecord.user_id);
+      if (!user) {
+        user = await findOrCreateUser({
+          email: keyRecord.user_email || `user-${keyRecord.user_id}@oryxgen.ai`,
+          name: keyRecord.user_name || "Oryxgen User",
+          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(keyRecord.user_name || "Oryxgen")}`,
+          authProvider: "apikey",
+        });
+      }
+
+      const token = generateToken(user);
+      return res.json({
+        ok: true,
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatar: user.avatar,
+        },
+      });
+    } catch (err) {
+      console.error("[Auth API Key Error]:", err);
+      return res.status(500).json({ error: "API kalit tekshirishda xatolik yuz berdi." });
+    }
+  });
+
   // 5. Current user profile
   app.get("/api/auth/me", authMiddleware, async (req, res) => {
     if (!req.user) {

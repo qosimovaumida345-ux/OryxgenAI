@@ -2472,3 +2472,84 @@
   flex-direction: column;
   align-items: center;
 }
+
+/* Desktop Auth Banner at top of Website */
+.desktop-auth-top-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.95), rgba(99, 102, 241, 0.95));
+  color: #fff;
+  padding: 10px 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  animation: bannerSlideDown 0.3s ease-out;
+}
+
+@keyframes bannerSlideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+.desktop-auth-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.desktop-auth-icon {
+  font-size: 20px;
+}
+
+.desktop-auth-text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.desktop-auth-text strong {
+  font-weight: 600;
+}
+
+.desktop-auth-text span {
+  opacity: 0.9;
+  font-size: 12.5px;
+}
+
+.desktop-auth-open-btn {
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.desktop-auth-open-btn:hover {
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.desktop-auth-close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.desktop-auth-close-btn:hover {
+  color: #ffffff;
+}

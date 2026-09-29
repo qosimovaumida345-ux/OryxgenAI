@@ -82,7 +82,7 @@ export default function McpConnect() {
             textAlign: "center",
             gap: 18,
         }}>
-            <img src="/Logo.png" alt="Oryxgen AI" style={{ width: 40, height: 40 }} />
+            <img src="./Logo.png" alt="Oryxgen AI" style={{ width: 40, height: 40 }} />
             <h2 style={{ margin: 0, fontSize: 20 }}>Oryxgen AI — MCP ulanish</h2>
 
             {status === "checking" && <p style={{ color: "#888" }}>Tekshirilmoqda...</p>}

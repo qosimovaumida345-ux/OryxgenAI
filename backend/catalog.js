@@ -10,260 +10,167 @@ const row = (id, company, displayName, description, logoKey, capability = "chat"
 });
 
 export const CATALOG = [
-  // --- ANTHROPIC CLAUDE (PREMIUM LUXURY LINEUP) ---
-  row("claude-instant", "Anthropic", "Claude Instant", "Ultra-fast lightweight Claude assistant for quick tasks.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-1", "Anthropic", "Claude 1", "Foundational Claude conversational intelligence.", "anthropic", "chat", true, ["claude"]),
-  row("claude-1.2", "Anthropic", "Claude 1.2", "Enhanced generation with nuanced language understanding.", "anthropic", "chat", true, ["claude"]),
-  row("claude-1.3", "Anthropic", "Claude 1.3", "Refined Claude 1 flagship iteration.", "anthropic", "chat", true, ["claude"]),
-  row("claude-2", "Anthropic", "Claude 2", "100k context model with superior document comprehension.", "anthropic", "chat", true, ["claude", "long-context"]),
-  row("claude-2.1", "Anthropic", "Claude 2.1", "200k context window with reduced hallucination rates.", "anthropic", "chat", true, ["claude", "long-context"]),
-  row("claude-3-haiku", "Anthropic", "Claude 3 Haiku", "Instant response speed with near-instant reasoning.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-3-sonnet", "Anthropic", "Claude 3 Sonnet", "Ideal balance of intelligence and operational speed.", "anthropic", "chat", true, ["claude"]),
-  row("claude-3-opus", "Anthropic", "Claude 3 Opus", "Top-tier complex reasoning and deep synthesis.", "anthropic", "reason", true, ["claude", "flagship"]),
-  row("claude-3.5-haiku", "Anthropic", "Claude 3.5 Haiku", "High-velocity next-gen Haiku matching earlier flagships.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-3.5-sonnet", "Anthropic", "Claude 3.5 Sonnet", "Industry benchmark for software engineering & reasoning.", "anthropic", "code", true, ["claude", "code", "top"]),
-  row("claude-3.5-sonnet-new", "Anthropic", "Claude 3.5 Sonnet (New)", "Upgraded 3.5 Sonnet checkpoint with agentic capabilities.", "anthropic", "code", true, ["claude", "code"]),
-  row("claude-3.5-sonnet-oct", "Anthropic", "Claude 3.5 Sonnet (Oct 2024)", "Enhanced computer use and tool automation release.", "anthropic", "code", true, ["claude", "agent"]),
+  // ═══════════════════════════════════════════════════════════════
+  // ANTHROPIC CLAUDE — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("claude-sonnet-5.5", "Anthropic", "Claude Sonnet 5.5", "Best balance of speed and intelligence. Released September 28, 2026.", "anthropic", "code", true, ["claude", "code", "flagship"]),
+  row("claude-opus-5.5", "Anthropic", "Claude Opus 5.5", "High-end agentic coding & knowledge work. Released September 22, 2026.", "anthropic", "reason", true, ["claude", "reason", "flagship", "thinking"]),
+  row("claude-fable-5.1", "Anthropic", "Claude Fable 5.1", "Most capable model for demanding reasoning & long-horizon agentic work. 1M context.", "anthropic", "reason", true, ["claude", "reason", "thinking", "flagship"]),
+  row("claude-haiku-4.5", "Anthropic", "Claude Haiku 4.5", "Fastest, low-cost Claude for quick tasks. 200K context.", "anthropic", "chat", true, ["claude", "fast"]),
   row("claude-3.7-sonnet", "Anthropic", "Claude 3.7 Sonnet", "Hybrid reasoning model switching between fast and deep thinking.", "anthropic", "reason", true, ["claude", "hybrid", "thinking"]),
-  row("claude-4-haiku", "Anthropic", "Claude 4 Haiku", "Sub-second multi-turn enterprise dialog agent.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-4-sonnet", "Anthropic", "Claude 4 Sonnet", "Autonomous workflow execution and code generation.", "anthropic", "code", true, ["claude", "code"]),
-  row("claude-4-opus", "Anthropic", "Claude 4 Opus", "Unrivaled deep cognitive analysis and research synthesis.", "anthropic", "reason", true, ["claude", "reason"]),
-  row("claude-4.1-haiku", "Anthropic", "Claude 4.1 Haiku", "Ultra-efficient Claude 4.1 speed iteration.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-4.1-sonnet", "Anthropic", "Claude 4.1 Sonnet", "Optimized enterprise automation and systems analysis.", "anthropic", "code", true, ["claude", "code"]),
-  row("claude-4.1-opus", "Anthropic", "Claude 4.1 Opus", "Multi-modal cognitive deliberation engine.", "anthropic", "reason", true, ["claude", "reason"]),
-  row("claude-4.5-haiku", "Anthropic", "Claude 4.5 Haiku", "Real-time edge intelligence with 500k context.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-4.5-sonnet", "Anthropic", "Claude 4.5 Sonnet", "Next-gen code architecture and live agent execution.", "anthropic", "code", true, ["claude", "code"]),
-  row("claude-4.5-opus", "Anthropic", "Claude 4.5 Opus", "Grandmaster reasoning and multi-step theorem proving.", "anthropic", "reason", true, ["claude", "reason"]),
-  row("claude-4.6-haiku", "Anthropic", "Claude 4.6 Haiku", "Ultra-responsive Haiku with continuous context memory.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-4.6-sonnet", "Anthropic", "Claude 4.6 Sonnet", "Production-grade automated engineering engine.", "anthropic", "code", true, ["claude", "code"]),
-  row("claude-4.6-opus", "Anthropic", "Claude 4.6 Opus", "Peak Anthropic cognitive model with deep deliberation.", "anthropic", "reason", true, ["claude", "flagship", "thinking"]),
-  row("claude-sonnet-4", "Anthropic", "Claude Sonnet 4", "Balanced intelligence for operational workloads.", "anthropic", "chat", true, ["claude"]),
-  row("claude-opus-4.1", "Anthropic", "Claude Opus 4.1", "Advanced mathematical and scientific reasoning.", "anthropic", "reason", true, ["claude", "reason"]),
-  row("claude-haiku-4.5", "Anthropic", "Claude Haiku 4.5", "High throughput stream for real-time applications.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-4.6-haiku", "Anthropic", "Claude 4.6 Haiku", "Blazing-fast fifth-gen Haiku with 1M context window.", "anthropic", "chat", true, ["claude", "fast"]),
-  row("claude-5-sonnet", "Anthropic", "Claude 5 Sonnet", "Production-grade autonomous coding and reasoning engine.", "anthropic", "code", true, ["claude", "code", "flagship"]),
-  row("claude-5-opus", "Anthropic", "Claude 5 Opus", "Peak cognitive intelligence with deep multi-step deliberation.", "anthropic", "reason", true, ["claude", "reason", "flagship", "thinking"]),
-  row("claude-5.5-opus", "Anthropic", "Claude 5.5 Opus", "Extended deliberation with self-verification and proof chains.", "anthropic", "reason", true, ["claude", "reason", "thinking"]),
-  row("claude-fable-5.1", "Anthropic", "Claude Fable 5.1", "Creative writing and narrative synthesis specialist.", "anthropic", "chat", true, ["claude", "creative"]),
+  row("claude-3.5-sonnet", "Anthropic", "Claude 3.5 Sonnet", "Industry benchmark for software engineering & reasoning.", "anthropic", "code", true, ["claude", "code"]),
+  row("claude-3.5-haiku", "Anthropic", "Claude 3.5 Haiku", "High-velocity Haiku matching earlier flagship performance.", "anthropic", "chat", true, ["claude", "fast"]),
+  row("claude-3-opus", "Anthropic", "Claude 3 Opus", "Top-tier complex reasoning and deep synthesis.", "anthropic", "reason", true, ["claude", "reason"]),
+  row("claude-3-sonnet", "Anthropic", "Claude 3 Sonnet", "Ideal balance of intelligence and speed.", "anthropic", "chat", true, ["claude"]),
+  row("claude-3-haiku", "Anthropic", "Claude 3 Haiku", "Instant response speed with near-instant reasoning.", "anthropic", "chat", true, ["claude", "fast"]),
 
-  // --- OPENAI / CHATGPT ---
-  row("gpt-3.5-turbo", "OpenAI", "GPT-3.5 Turbo", "Fast, dependable general conversation model.", "openai", "chat"),
-  row("gpt-4", "OpenAI", "GPT-4", "Original breakthrough reasoning and instruction model.", "openai", "reason"),
-  row("gpt-4-turbo", "OpenAI", "GPT-4 Turbo", "Updated knowledge base with 128k context support.", "openai", "chat"),
-  row("gpt-4o", "OpenAI", "GPT-4o", "Omni multi-modal model for text, vision, and real-time audio.", "openai", "vision"),
-  row("gpt-4o-mini", "OpenAI", "GPT-4o mini", "Affordable, lightning-fast omni reasoning model.", "openai", "chat"),
-  row("gpt-4.1", "OpenAI", "GPT-4.1", "Refined GPT-4 architecture with zero-shot tool precision.", "openai", "chat"),
-  row("gpt-4.1-mini", "OpenAI", "GPT-4.1 mini", "Ultra-compact 4.1 model for high-frequency operations.", "openai", "chat"),
-  row("gpt-4.1-nano", "OpenAI", "GPT-4.1 nano", "Edge-optimized GPT-4 iteration with minimal latency.", "openai", "chat"),
-  row("o1", "OpenAI", "o1", "Advanced chain-of-thought model for STEM & mathematics.", "openai", "reason", false, ["thinking", "stem"]),
-  row("o1-mini", "OpenAI", "o1-mini", "Fast, cost-efficient reasoning model for code and science.", "openai", "reason", false, ["thinking", "code"]),
-  row("o1-preview", "OpenAI", "o1-preview", "Deliberative reasoning preview release.", "openai", "reason", false, ["thinking"]),
-  row("o1-pro", "OpenAI", "o1-pro", "Extended compute budget for deepest problem-solving.", "openai", "reason", false, ["thinking", "flagship"]),
-  row("o3", "OpenAI", "o3", "Next-gen frontier reasoning model with automated verification.", "openai", "reason", false, ["thinking", "frontier"]),
-  row("o3-mini", "OpenAI", "o3-mini", "Speed-optimized reasoning model with selectable effort.", "openai", "reason", false, ["thinking"]),
-  row("o3-pro", "OpenAI", "o3-pro", "Maximum reasoning tier for complex scientific pipelines.", "openai", "reason", false, ["thinking"]),
-  row("o4-mini", "OpenAI", "o4-mini", "Sub-second thinking model for live programming assistance.", "openai", "reason", false, ["thinking"]),
-  row("gpt-5", "OpenAI", "GPT-5", "Next-generation foundation model with universal adaptability.", "openai", "reason"),
-  row("gpt-5-mini", "OpenAI", "GPT-5 mini", "High-efficiency GPT-5 variant for high scale.", "openai", "chat"),
-  row("gpt-5-nano", "OpenAI", "GPT-5 nano", "Micro-scale GPT-5 for embedded and on-device tasks.", "openai", "chat"),
-  row("gpt-5.1", "OpenAI", "GPT-5.1", "Incremental reasoning and tool calling upgrade.", "openai", "chat"),
-  row("gpt-5.2", "OpenAI", "GPT-5.2", "Advanced multi-agent synthesis and context awareness.", "openai", "chat"),
+  // ═══════════════════════════════════════════════════════════════
+  // OPENAI — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("gpt-6-astra", "OpenAI", "GPT-6 Astra", "Most capable flagship. Complex reasoning, coding & agentic workflows. Released Sept 3, 2026.", "openai", "reason", false, ["flagship", "thinking"]),
+  row("gpt-6-sol", "OpenAI", "GPT-6 Sol", "Balanced intelligence & cost for complex coding and agentic tasks. Released Sept 22, 2026.", "openai", "code", false, ["code", "flagship"]),
+  row("gpt-6-luna", "OpenAI", "GPT-6 Luna", "Most efficient GPT-6 for high-volume, cost-sensitive workloads.", "openai", "chat"),
+  row("gpt-live-1", "OpenAI", "GPT-Live-1", "Natural full-duplex voice conversations in the API. Released September 2026.", "openai", "chat", false, ["voice"]),
+  row("gpt-5.5", "OpenAI", "GPT-5.5", "Previous frontier model, retiring October 14, 2026.", "openai", "reason"),
   row("gpt-5.4", "OpenAI", "GPT-5.4", "Unified deliberate reasoning and fast execution engine.", "openai", "reason"),
-  row("gpt-5.6", "OpenAI", "GPT-5.6", "State-of-the-art enterprise flagship intelligence.", "openai", "reason"),
-  row("gpt-5.6-luna", "OpenAI", "GPT-5.6 Luna", "Specialized conversational variant with emotional intelligence.", "openai", "chat"),
-  row("chatgpt-4o", "OpenAI", "ChatGPT-4o", "Full ChatGPT 4o experience with multimodal context.", "openai", "vision"),
-  row("chatgpt-4.1", "OpenAI", "ChatGPT-4.1", "ChatGPT tailored for deep multi-turn analysis.", "openai", "chat"),
-  row("chatgpt-5", "OpenAI", "ChatGPT-5", "Conversational frontend to OpenAI's GPT-5 core.", "openai", "reason"),
-  row("gpt-6-astra", "OpenAI", "GPT-6 Astra", "Frontier multi-modal AGI system with autonomous tool orchestration.", "openai", "reason", false, ["flagship", "thinking"]),
-  row("gpt-6-astra-mini", "OpenAI", "GPT-6 Astra Mini", "Compact Astra variant for high-speed enterprise workloads.", "openai", "chat"),
-  row("o5", "OpenAI", "o5", "Next-generation deliberative reasoning with self-play verification.", "openai", "reason", false, ["thinking", "frontier"]),
-  row("o5-mini", "OpenAI", "o5-mini", "Fast reasoning model with automated proof checking.", "openai", "reason", false, ["thinking"]),
+  row("gpt-5", "OpenAI", "GPT-5", "Foundation model with universal adaptability. Released August 2025.", "openai", "reason"),
+  row("gpt-4o", "OpenAI", "GPT-4o", "Omni multi-modal model for text, vision, and audio.", "openai", "vision"),
+  row("gpt-4o-mini", "OpenAI", "GPT-4o mini", "Affordable, lightning-fast omni reasoning model.", "openai", "chat"),
+  row("gpt-4-turbo", "OpenAI", "GPT-4 Turbo", "128k context with updated knowledge base.", "openai", "chat"),
+  row("gpt-4", "OpenAI", "GPT-4", "Original breakthrough reasoning and instruction model.", "openai", "reason"),
+  row("gpt-3.5-turbo", "OpenAI", "GPT-3.5 Turbo", "Fast, dependable general conversation model.", "openai", "chat"),
+  row("o4-mini", "OpenAI", "o4-mini", "Sub-second thinking model for live programming assistance.", "openai", "reason", false, ["thinking"]),
+  row("o3", "OpenAI", "o3", "Frontier reasoning model with automated verification.", "openai", "reason", false, ["thinking", "frontier"]),
+  row("o3-mini", "OpenAI", "o3-mini", "Speed-optimized reasoning with selectable effort.", "openai", "reason", false, ["thinking"]),
+  row("o3-pro", "OpenAI", "o3-pro", "Maximum reasoning tier for complex scientific pipelines.", "openai", "reason", false, ["thinking"]),
+  row("o1", "OpenAI", "o1", "Advanced chain-of-thought for STEM & mathematics.", "openai", "reason", false, ["thinking", "stem"]),
+  row("o1-mini", "OpenAI", "o1-mini", "Fast, cost-efficient reasoning for code and science.", "openai", "reason", false, ["thinking", "code"]),
+  row("o1-pro", "OpenAI", "o1-pro", "Extended compute budget for deepest problem-solving.", "openai", "reason", false, ["thinking"]),
 
-  // --- DEEPSEEK ---
-  row("deepseek-v2", "DeepSeek", "DeepSeek V2", "Economical MoE model with strong benchmark scores.", "deepseek", "chat"),
-  row("deepseek-v2.5", "DeepSeek", "DeepSeek V2.5", "Merged conversational and coding capabilities.", "deepseek", "code"),
-  row("deepseek-v3", "DeepSeek", "DeepSeek V3", "671B parameter MoE frontier model with 37B active.", "deepseek", "chat"),
-  row("deepseek-v3.1", "DeepSeek", "DeepSeek V3.1", "Refined instruction following and multi-lingual mastery.", "deepseek", "chat"),
-  row("deepseek-v3.2", "DeepSeek", "DeepSeek V3.2", "Extended 128k context and ultra-fast inference speed.", "deepseek", "chat"),
-  row("deepseek-r1", "DeepSeek", "DeepSeek R1", "Full open reasoning model rivaling OpenAI o1.", "deepseek", "reason", false, ["thinking", "open-source"]),
-  row("deepseek-r1-zero", "DeepSeek", "DeepSeek R1-Zero", "Pure reinforcement learning reasoning without SFT data.", "deepseek", "reason", false, ["thinking"]),
-  row("deepseek-r1-0528", "DeepSeek", "DeepSeek R1-0528", "Updated R1 checkpoint with reduced overthinking.", "deepseek", "reason", false, ["thinking"]),
-  row("deepseek-r1-distill-qwen", "DeepSeek", "DeepSeek R1 Distill Qwen", "Distilled R1 reasoning into Qwen architecture.", "deepseek", "reason", false, ["thinking"]),
-  row("deepseek-r1-distill-llama", "DeepSeek", "DeepSeek R1 Distill Llama", "Distilled R1 reasoning into Llama 70B.", "deepseek", "reason", false, ["thinking"]),
-  row("deepseek-coder", "DeepSeek", "DeepSeek Coder", "Code generation and project refactoring specialist.", "deepseek", "code"),
-  row("deepseek-coder-v2", "DeepSeek", "DeepSeek Coder V2", "Supports 338+ programming languages with 128k context.", "deepseek", "code"),
-  row("deepseek-vl", "DeepSeek", "DeepSeek VL", "High-resolution vision-language model.", "deepseek", "vision"),
-  row("deepseek-vl2", "DeepSeek", "DeepSeek VL2", "Second-gen vision MoE with document OCR capability.", "deepseek", "vision"),
-  row("deepseek-r2", "DeepSeek", "DeepSeek R2", "Second-gen open reasoning model surpassing o3-pro benchmarks.", "deepseek", "reason", false, ["thinking", "open-source"]),
-  row("deepseek-v4", "DeepSeek", "DeepSeek V4", "Trillion-parameter MoE with universal task mastery.", "deepseek", "reason"),
-
-  // --- GOOGLE GEMINI ---
-  row("gemini-1.0-pro", "Google", "Gemini 1.0 Pro", "First Gemini model for scalable NLP workloads.", "google", "chat"),
-  row("gemini-1.5-flash", "Google", "Gemini 1.5 Flash", "1M token context with high speed and audio/video inputs.", "google", "chat", false, ["long-context"]),
-  row("gemini-1.5-pro", "Google", "Gemini 1.5 Pro", "2M token context window for massive repository analysis.", "google", "reason", false, ["long-context"]),
+  // ═══════════════════════════════════════════════════════════════
+  // GOOGLE GEMINI & GEMMA — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("gemini-3.8-flash", "Google", "Gemini 3.8 Flash", "Latest workhorse with selectable thinking levels & computer use. September 2026.", "google", "chat", false, ["fast", "thinking"]),
+  row("gemini-3.7-flash", "Google", "Gemini 3.7 Flash", "High-performance fast model. August 2026.", "google", "chat", false, ["thinking"]),
+  row("gemini-3.6-flash", "Google", "Gemini 3.6 Flash", "Reliable Flash generation from July 2026.", "google", "chat"),
+  row("gemini-3.5-flash", "Google", "Gemini 3.5 Flash", "Fast, long-horizon agentic tasks. May 2026.", "google", "chat"),
+  row("gemini-3.1-pro", "Google", "Gemini 3.1 Pro", "Flagship Pro model for high-capability reasoning tasks.", "google", "reason", false, ["flagship", "thinking"]),
+  row("gemini-2.5-pro", "Google", "Gemini 2.5 Pro", "Production reasoning model with deep analysis.", "google", "reason"),
+  row("gemini-2.5-flash", "Google", "Gemini 2.5 Flash", "Cost-efficient production Flash model.", "google", "chat"),
+  row("gemini-2.5-flash-lite", "Google", "Gemini 2.5 Flash-Lite", "Budget-friendly lightweight Gemini.", "google", "chat", false, ["fast"]),
   row("gemini-2.0-flash", "Google", "Gemini 2.0 Flash", "Real-time multimodal agent with native tool execution.", "google", "chat"),
-  row("gemini-2.0-flash-lite", "Google", "Gemini 2.0 Flash-Lite", "Cost-effective 2.0 model for ultra-low latency.", "google", "chat"),
-  row("gemini-2.0-pro", "Google", "Gemini 2.0 Pro", "Google's most capable model for complex coding & reasoning.", "google", "reason"),
-  row("gemini-2.5-flash", "Google", "Gemini 2.5 Flash", "Upgraded 2.5 Flash with live streaming vision.", "google", "chat"),
-  row("gemini-2.5-pro", "Google", "Gemini 2.5 Pro", "Enhanced scientific reasoning and 4M context capacity.", "google", "reason"),
-  row("gemini-3-flash", "Google", "Gemini 3 Flash", "Third-generation Flash with instant cognitive responses.", "google", "chat"),
-  row("gemini-3-pro", "Google", "Gemini 3 Pro", "Next-generation multimodal powerhouse.", "google", "reason"),
-  row("gemini-3.5-flash", "Google", "Gemini 3.5 Flash", "Sub-100ms multi-modal reasoning engine.", "google", "chat"),
-  row("gemini-3.5-pro", "Google", "Gemini 3.5 Pro", "Autonomous long-horizon research assistant.", "google", "reason"),
-  row("gemini-3.7-flash", "Google", "Gemini 3.7 Flash", "Hybrid thinking Flash model with selectable reasoning depth.", "google", "reason", false, ["thinking"]),
-  row("gemma-2-9b", "Google", "Gemma 2 9B", "Lightweight open model punching above its weight class.", "google", "chat"),
-  row("gemma-2-27b", "Google", "Gemma 2 27B", "High-performance open weights model from Google DeepMind.", "google", "chat"),
-  row("gemma-3-12b", "Google", "Gemma 3 12B", "Third-gen Gemma with native vision and coding support.", "google", "chat"),
-  row("gemma-4-31b", "Google", "Gemma 4 31B", "Next-gen open architecture with near-frontier performance.", "google", "reason"),
-  row("gemini-3.8-flash", "Google", "Gemini 3.8 Flash", "Ultra-fast hybrid reasoning with real-time tool execution.", "google", "chat", false, ["fast", "thinking"]),
-  row("gemini-3.8-pro", "Google", "Gemini 3.8 Pro", "Frontier multi-modal with 8M context and deep synthesis.", "google", "reason", false, ["thinking", "flagship"]),
-  row("gemini-4-flash", "Google", "Gemini 4 Flash", "Fourth-gen Flash with native agent orchestration.", "google", "chat"),
-  row("gemini-4-pro", "Google", "Gemini 4 Pro", "Peak Google AI reasoning and autonomous research.", "google", "reason", false, ["flagship"]),
+  row("gemini-1.5-pro", "Google", "Gemini 1.5 Pro", "2M token context window for massive analysis.", "google", "reason", false, ["long-context"]),
+  row("gemini-1.5-flash", "Google", "Gemini 1.5 Flash", "1M token context with high speed.", "google", "chat", false, ["long-context"]),
+  row("gemma-4-31b", "Google", "Gemma 4 31B", "Near-frontier open model from Google DeepMind.", "google", "reason"),
+  row("gemma-3-12b", "Google", "Gemma 3 12B", "Third-gen Gemma with native vision and coding.", "google", "chat"),
+  row("gemma-2-27b", "Google", "Gemma 2 27B", "High-performance open weights model.", "google", "chat"),
+  row("gemma-2-9b", "Google", "Gemma 2 9B", "Lightweight open model.", "google", "chat"),
 
-  // --- XAI GROK ---
-  row("grok-1", "xAI", "Grok-1", "Open 314B MoE foundation model.", "xai", "chat"),
-  row("grok-1.5", "xAI", "Grok-1.5", "Enhanced math and coding with 128k context.", "xai", "chat"),
-  row("grok-2", "xAI", "Grok-2", "Frontier model with state-of-the-art vision & reasoning.", "xai", "chat"),
-  row("grok-2-mini", "xAI", "Grok-2 mini", "Compact, agile Grok for fast conversational queries.", "xai", "chat"),
-  row("grok-3", "xAI", "Grok-3", "Flagship model trained on the Colossus supercluster.", "xai", "reason", false, ["thinking", "colossus"]),
-  row("grok-3-mini", "xAI", "Grok-3 mini", "Fast reasoning Grok-3 tier for code & live search.", "xai", "chat"),
-  row("grok-4", "xAI", "Grok-4", "Next-gen autonomous reasoning engine from xAI.", "xai", "reason"),
-  row("grok-4-mini", "xAI", "Grok-4 mini", "Real-time interactive intelligence.", "xai", "chat"),
-  row("grok-4.6", "xAI", "Grok 4.6", "Latest frontier Grok with real-time world grounding.", "xai", "reason"),
-  row("grok-5", "xAI", "Grok 5", "Fifth-gen autonomous reasoning engine trained on Colossus 2.", "xai", "reason", false, ["thinking", "flagship"]),
-  row("grok-5-mini", "xAI", "Grok 5 Mini", "Speed-optimized Grok 5 for real-time applications.", "xai", "chat"),
+  // ═══════════════════════════════════════════════════════════════
+  // DEEPSEEK — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("deepseek-v4.1-flash", "DeepSeek", "DeepSeek V4.1 Flash", "Current flagship. 552B MoE with native multimodal vision. 1M context. September 2026.", "deepseek", "reason", false, ["flagship"]),
+  row("deepseek-v4-pro", "DeepSeek", "DeepSeek V4 Pro", "Previous flagship, phasing out. High-capability reasoning.", "deepseek", "reason"),
+  row("deepseek-v3", "DeepSeek", "DeepSeek V3", "671B MoE frontier model with 37B active parameters.", "deepseek", "chat"),
+  row("deepseek-r1", "DeepSeek", "DeepSeek R1", "Full open reasoning model rivaling OpenAI o1.", "deepseek", "reason", false, ["thinking", "open-source"]),
+  row("deepseek-r1-0528", "DeepSeek", "DeepSeek R1-0528", "Updated R1 checkpoint with reduced overthinking.", "deepseek", "reason", false, ["thinking"]),
+  row("deepseek-coder-v2", "DeepSeek", "DeepSeek Coder V2", "338+ programming languages with 128k context.", "deepseek", "code"),
+  row("deepseek-vl2", "DeepSeek", "DeepSeek VL2", "Vision MoE with document OCR capability.", "deepseek", "vision"),
 
-  // --- META LLAMA ---
-  row("llama-2-7b", "Meta", "Llama 2 7B", "Foundational open-source 7B dialogue model.", "meta", "chat"),
-  row("llama-2-13b", "Meta", "Llama 2 13B", "Balanced 13B model for standard chat use cases.", "meta", "chat"),
-  row("llama-2-70b", "Meta", "Llama 2 70B", "Flagship Llama 2 with strong general reasoning.", "meta", "chat"),
-  row("llama-3-8b", "Meta", "Llama 3 8B", "Highly capable 8B model with 8k vocabulary.", "meta", "chat"),
-  row("llama-3-70b", "Meta", "Llama 3 70B", "Flagship Llama 3 with top-tier open performance.", "meta", "chat"),
-  row("llama-3.1-8b", "Meta", "Llama 3.1 8B", "128k context open model with tool calling support.", "meta", "chat"),
-  row("llama-3.1-70b", "Meta", "Llama 3.1 70B", "Production standard for open-source enterprise AI.", "meta", "chat"),
-  row("llama-3.1-405b", "Meta", "Llama 3.1 405B", "World's largest open weights frontier model.", "meta", "reason"),
-  row("llama-3.2-1b", "Meta", "Llama 3.2 1B", "Ultra-lightweight edge model for mobile devices.", "meta", "chat"),
-  row("llama-3.2-3b", "Meta", "Llama 3.2 3B", "Compact model optimized for low-resource environments.", "meta", "chat"),
-  row("llama-3.2-11b-vision", "Meta", "Llama 3.2 11B Vision", "Multimodal model capable of chart & image analysis.", "meta", "vision"),
+  // ═══════════════════════════════════════════════════════════════
+  // xAI GROK — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("grok-4.7", "xAI", "Grok 4.7", "Latest flagship. Coding, agentic tasks, 500K context. Released Sept 21, 2026.", "xai", "reason", false, ["flagship", "thinking"]),
+  row("grok-4.6", "xAI", "Grok 4.6", "Widely used frontier model. August 2026.", "xai", "reason"),
+  row("grok-4.20", "xAI", "Grok 4.20", "Long-running multi-agent agentic tasks.", "xai", "reason", false, ["agent"]),
+  row("grok-4.1-fast", "xAI", "Grok 4.1 Fast", "Budget high-volume model with fast response.", "xai", "chat", false, ["fast"]),
+
+  // ═══════════════════════════════════════════════════════════════
+  // META LLAMA & MUSE — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("muse-spark-1.3", "Meta", "Muse Spark 1.3", "Current frontier. Agentic workflows and complex reasoning. September 2026.", "meta", "reason", false, ["flagship"]),
+  row("muse-glimmer", "Meta", "Muse Glimmer", "30B dense multimodal model. Apache 2.0. August 2026.", "meta", "chat", false, ["open-source"]),
+  row("llama-4-maverick", "Meta", "Llama 4 Maverick", "17B (128 experts) MoE. High performance reasoning. 1M context.", "meta", "reason"),
+  row("llama-4-scout", "Meta", "Llama 4 Scout", "17B (16 experts) MoE. 10M context window. High efficiency.", "meta", "chat"),
+  row("llama-3.3-70b", "Meta", "Llama 3.3 70B", "Matching 405B performance at 70B scale.", "meta", "chat"),
   row("llama-3.2-90b-vision", "Meta", "Llama 3.2 90B Vision", "Flagship open vision model with rich visual reasoning.", "meta", "vision"),
-  row("llama-3.3-70b", "Meta", "Llama 3.3 70B", "Llama 3.3 matching 405B performance at 70B scale.", "meta", "chat"),
-  row("llama-4-scout", "Meta", "Llama 4 Scout", "High-speed agentic scout model for web operations.", "meta", "chat"),
-  row("llama-4-maverick", "Meta", "Llama 4 Maverick", "Advanced architectural engineering model.", "meta", "reason"),
-  row("llama-4-behemoth", "Meta", "Llama 4 Behemoth", "Multi-trillion token trained frontier behemoth.", "meta", "reason"),
+  row("llama-3.2-11b-vision", "Meta", "Llama 3.2 11B Vision", "Multimodal model for chart & image analysis.", "meta", "vision"),
+  row("llama-3.1-405b", "Meta", "Llama 3.1 405B", "World's largest open weights frontier model.", "meta", "reason"),
+  row("llama-3.1-70b", "Meta", "Llama 3.1 70B", "Production standard for open-source enterprise AI.", "meta", "chat"),
+  row("llama-3.1-8b", "Meta", "Llama 3.1 8B", "128k context open model with tool calling support.", "meta", "chat"),
 
-  // --- ALIBABA QWEN ---
-  row("qwen-2-7b", "Alibaba", "Qwen2 7B", "Multilingual 7B model with strong coding aptitude.", "qwen", "chat"),
-  row("qwen-2-72b", "Alibaba", "Qwen2 72B", "High-ranking open model across global leaderboards.", "qwen", "reason"),
-  row("qwen-2.5-7b", "Alibaba", "Qwen2.5 7B", "Massively improved math and coding in 7B size.", "qwen", "chat"),
-  row("qwen-2.5-14b", "Alibaba", "Qwen2.5 14B", "Golden sweet spot between latency and intelligence.", "qwen", "chat"),
-  row("qwen-2.5-32b", "Alibaba", "Qwen2.5 32B", "Superb coding model rivaling previous 70B systems.", "qwen", "code"),
-  row("qwen-2.5-72b", "Alibaba", "Qwen2.5 72B", "Global open benchmark leader in reasoning and math.", "qwen", "reason"),
-  row("qwen-2.5-coder", "Alibaba", "Qwen2.5 Coder", "Specialized coding champion across 92 languages.", "qwen", "code"),
-  row("qwen-3-8b", "Alibaba", "Qwen3 8B", "Next-gen Qwen foundation with native agent actions.", "qwen", "chat"),
-  row("qwen-3-32b", "Alibaba", "Qwen3 32B", "Comprehensive reasoning and enterprise synthesis.", "qwen", "chat"),
+  // ═══════════════════════════════════════════════════════════════
+  // ALIBABA QWEN — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("qwen-3.8-max", "Alibaba", "Qwen 3.8 Max", "Current flagship. 2.4T MoE. August 2026.", "qwen", "reason", false, ["flagship"]),
+  row("qwen-3.8-omni-flash", "Alibaba", "Qwen 3.8 Omni Flash", "Native omnimodal model with agentic capabilities. September 2026.", "qwen", "vision"),
+  row("qwen-3.5-72b", "Alibaba", "Qwen 3.5 72B", "Strong coding, math, and instruction-following.", "qwen", "reason"),
   row("qwen-3-235b", "Alibaba", "Qwen3 235B", "Massive MoE model for universal task execution.", "qwen", "reason"),
-  row("qwen-3-max", "Alibaba", "Qwen3 Max", "Alibaba's most powerful proprietary cloud model.", "qwen", "reason"),
-  row("qwen-3.8-max", "Alibaba", "Qwen3.8 Max", "Enhanced multi-turn agent with tool integration.", "qwen", "reason"),
-  row("qwq-32b", "Alibaba", "QwQ 32B", "Specialized open reasoning model with thinking steps.", "qwen", "reason", false, ["thinking"]),
+  row("qwen-3-32b", "Alibaba", "Qwen3 32B", "Comprehensive reasoning and enterprise synthesis.", "qwen", "chat"),
+  row("qwen-3-8b", "Alibaba", "Qwen3 8B", "Foundation model with native agent actions.", "qwen", "chat"),
+  row("qwen-2.5-coder", "Alibaba", "Qwen2.5 Coder", "Specialized coding champion across 92 languages.", "qwen", "code"),
+  row("qwen-2.5-72b", "Alibaba", "Qwen2.5 72B", "Global open benchmark leader.", "qwen", "reason"),
+  row("qwq-32b", "Alibaba", "QwQ 32B", "Specialized reasoning model with thinking steps.", "qwen", "reason", false, ["thinking"]),
 
-  // --- MISTRAL AI ---
-  row("mistral-7b", "Mistral", "Mistral 7B", "Legendary compact model with sliding window attention.", "mistral", "chat"),
-  row("mixtral-8x7b", "Mistral", "Mixtral 8x7B", "Pioneering sparse mixture-of-experts model.", "mistral", "chat"),
-  row("mixtral-8x22b", "Mistral", "Mixtral 8x22B", "High-capacity 176B parameter open MoE model.", "mistral", "reason"),
-  row("mistral-small", "Mistral", "Mistral Small", "Low-latency enterprise model with function calling.", "mistral", "chat"),
-  row("mistral-small-3", "Mistral", "Mistral Small 3", "Latest Small generation with superior multilingual fluency.", "mistral", "chat"),
-  row("mistral-medium", "Mistral", "Mistral Medium", "Balanced performance for complex reasoning.", "mistral", "chat"),
-  row("mistral-large", "Mistral", "Mistral Large", "Flagship reasoning model with fluent multilingual support.", "mistral", "reason"),
-  row("mistral-large-2", "Mistral", "Mistral Large 2", "123B model built for code and advanced math.", "mistral", "reason"),
-  row("mistral-large-3", "Mistral", "Mistral Large 3", "State-of-the-art European frontier model.", "mistral", "reason"),
-  row("mistral-nemo", "Mistral", "Mistral Nemo", "12B model co-developed with NVIDIA with 128k context.", "mistral", "chat"),
-  row("codestral", "Mistral", "Codestral", "Code completion and FIM (Fill-in-the-Middle) specialist.", "mistral", "code"),
-  row("codestral-mamba", "Mistral", "Codestral Mamba", "Mamba state-space model for instant code inference.", "mistral", "code"),
-  row("pixtral-12b", "Mistral", "Pixtral 12B", "Multimodal vision model built on Nemo architecture.", "mistral", "vision"),
+  // ═══════════════════════════════════════════════════════════════
+  // MISTRAL AI — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("mistral-medium-3.5", "Mistral", "Mistral Medium 3.5", "Frontier multimodal model for agentic & coding workloads.", "mistral", "reason", false, ["flagship"]),
+  row("mistral-small-4", "Mistral", "Mistral Small 4", "Hybrid instruct, reasoning & coding in efficient package.", "mistral", "chat"),
+  row("mistral-large-3", "Mistral", "Mistral Large 3", "Flagship open-weight reasoning model.", "mistral", "reason"),
+  row("devstral-2", "Mistral", "Devstral 2", "Open-weights model for autonomous software engineering.", "mistral", "code"),
+  row("codestral", "Mistral", "Codestral", "Code completion and fill-in-the-middle specialist.", "mistral", "code"),
   row("pixtral-large", "Mistral", "Pixtral Large", "Flagship multimodal vision model with 128k context.", "mistral", "vision"),
-  row("ministral-3b", "Mistral", "Ministral 3B", "World-class on-device computing model.", "mistral", "chat"),
-  row("ministral-8b", "Mistral", "Ministral 8B", "High-power edge intelligence for mobile & IoT.", "mistral", "chat"),
-  row("magistral-small", "Mistral", "Magistral Small", "Reasoning model designed for autonomous pipelines.", "mistral", "reason", false, ["thinking"]),
-  row("magistral-medium", "Mistral", "Magistral Medium", "Deep deliberation engine from Mistral AI.", "mistral", "reason", false, ["thinking"]),
+  row("magistral-medium", "Mistral", "Magistral Medium", "Deep deliberation reasoning engine.", "mistral", "reason", false, ["thinking"]),
+  row("magistral-small", "Mistral", "Magistral Small", "Reasoning model for autonomous pipelines.", "mistral", "reason", false, ["thinking"]),
+  row("mistral-nemo", "Mistral", "Mistral Nemo", "12B model co-developed with NVIDIA. 128k context.", "mistral", "chat"),
 
-  // --- GROQ LPU ACCELERATED ---
-  row("groq-llama-3-8b", "Groq", "Groq Llama 3 8B", "500+ tokens/sec LPU-accelerated Llama 3 8B.", "groq", "chat", false, ["fast"]),
-  row("groq-llama-3-70b", "Groq", "Groq Llama 3 70B", "300+ tokens/sec 70B model execution on Groq LPU.", "groq", "chat", false, ["fast"]),
-  row("groq-llama-3.1-8b", "Groq", "Groq Llama 3.1 8B", "Ultra-low latency Llama 3.1 on Groq.", "groq", "chat", false, ["fast"]),
-  row("groq-llama-3.1-70b", "Groq", "Groq Llama 3.1 70B", "High-velocity enterprise intelligence.", "groq", "chat", false, ["fast"]),
-  row("groq-llama-3.1-405b", "Groq", "Groq Llama 3.1 405B", "Ultra-fast execution of 405B flagship.", "groq", "reason"),
-  row("groq-llama-3.3-70b", "Groq", "Groq Llama 3.3 70B", "Blazing 70B intelligence with instant responses.", "groq", "chat", false, ["fast"]),
-  row("groq-mixtral-8x7b", "Groq", "Groq Mixtral 8x7B", "Instant MoE tokens via Groq hardware.", "groq", "chat", false, ["fast"]),
-  row("groq-gemma-7b", "Groq", "Groq Gemma 7B", "Instant Gemma generation on Groq.", "groq", "chat", false, ["fast"]),
-  row("groq-gemma2-9b", "Groq", "Groq Gemma 2 9B", "Sub-second Gemma 2 9B inference.", "groq", "chat", false, ["fast"]),
-  row("groq-gpt-oss-20b", "Groq", "Groq GPT-OSS 20B", "Open weights GPT architecture at lightning speed.", "groq", "chat", false, ["fast"]),
-  row("groq-gpt-oss-120b", "Groq", "Groq GPT-OSS 120B", "Large-scale open GPT on specialized hardware.", "groq", "reason", false, ["fast"]),
-  row("groq-kimi-k2", "Groq", "Groq Kimi K2", "Ultra-long context Kimi accelerated on Groq.", "groq", "chat", false, ["fast"]),
-  row("groq-qwen3-32b", "Groq", "Groq Qwen3 32B", "Instant Qwen3 coding & chat generation.", "groq", "chat", false, ["fast"]),
-
-  // --- COHERE ---
-  row("command", "Cohere", "Command", "Enterprise business chat and instruction following.", "cohere", "chat"),
-  row("command-light", "Cohere", "Command Light", "Fast, lightweight model for high-volume tasks.", "cohere", "chat"),
-  row("command-r", "Cohere", "Command R", "Optimized for enterprise RAG and tool integration.", "cohere", "chat"),
-  row("command-r-plus", "Cohere", "Command R+", "Flagship RAG model with verified citations & tool use.", "cohere", "reason"),
-  row("command-a", "Cohere", "Command A", "Next-generation business agent model.", "cohere", "chat"),
-  row("command-a-vision", "Cohere", "Command A Vision", "Multimodal document comprehension and chart extraction.", "cohere", "vision"),
-  row("north-mini-code", "Cohere", "North Mini Code", "High-efficiency code synthesis and debugging.", "cohere", "code"),
-
-  // --- NVIDIA ---
-  row("nemotron-4-340b", "NVIDIA", "Nemotron-4 340B", "Synthetic data generation and enterprise reasoning.", "nvidia", "reason"),
-  row("nemotron-3-nano", "NVIDIA", "Nemotron 3 Nano", "Nano agent model for fast embedded orchestration.", "nvidia", "chat"),
-  row("nemotron-3-super", "NVIDIA", "Nemotron 3 Super", "Super 120B-class model optimized for NVIDIA DGX.", "nvidia", "reason"),
-  row("nemotron-3-ultra", "NVIDIA", "Nemotron 3 Ultra", "550B MoE model with extreme reasoning depth.", "nvidia", "reason"),
-  row("nemotron-3.5-lightning", "NVIDIA", "Nemotron 3.5 Lightning", "Sub-50ms latency AI generation engine.", "nvidia", "chat", false, ["fast"]),
+  // ═══════════════════════════════════════════════════════════════
+  // NVIDIA NEMOTRON — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("nemotron-3-ultra", "NVIDIA", "Nemotron 3 Ultra", "550B MoE. Hybrid Mamba-Transformer. 1M context. Extreme reasoning depth.", "nvidia", "reason"),
+  row("nemotron-3-super", "NVIDIA", "Nemotron 3 Super", "120B optimized for collaborative agent tasks.", "nvidia", "reason"),
+  row("nemotron-3.5-lightning", "NVIDIA", "Nemotron 3.5 Lightning", "30B fast MoE. Sub-50ms latency. August 2026.", "nvidia", "chat", false, ["fast"]),
+  row("nemotron-3-nano", "NVIDIA", "Nemotron 3 Nano", "Compact agent model for embedded orchestration.", "nvidia", "chat"),
   row("nemotron-nano-omni", "NVIDIA", "Nemotron Nano Omni", "Multimodal omni model with real-time reasoning.", "nvidia", "vision"),
 
-  // --- MICROSOFT PHI ---
-  row("phi-3-mini", "Microsoft", "Phi-3 Mini", "3.8B model trained on textbook-quality data.", "microsoft", "chat"),
-  row("phi-3-small", "Microsoft", "Phi-3 Small", "7B model delivering exceptional benchmark performance.", "microsoft", "chat"),
-  row("phi-3-medium", "Microsoft", "Phi-3 Medium", "14B model outperforming many larger models.", "microsoft", "chat"),
-  row("phi-3.5-mini", "Microsoft", "Phi-3.5 Mini", "128k context small language model for multi-lingual tasks.", "microsoft", "chat"),
+  // ═══════════════════════════════════════════════════════════════
+  // COHERE — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("command-a-plus", "Cohere", "Command A+", "Flagship MoE model. Vision, agentic reasoning & translation. May 2026.", "cohere", "reason", false, ["flagship"]),
+  row("command-r-plus", "Cohere", "Command R+", "Flagship RAG model with verified citations & tool use.", "cohere", "reason"),
+  row("command-r", "Cohere", "Command R", "Optimized for enterprise RAG and tool integration.", "cohere", "chat"),
+  row("north-mini-code", "Cohere", "North Mini Code", "30B MoE agentic coding model. 256k context. Apache 2.0.", "cohere", "code"),
+  row("north-small-translate", "Cohere", "North Small Translate", "MoE model for 50+ language translation. September 2026.", "cohere", "chat"),
+
+  // ═══════════════════════════════════════════════════════════════
+  // MICROSOFT PHI — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("phi-4-reasoning", "Microsoft", "Phi-4 Reasoning", "Small thinking model with step-by-step logic.", "microsoft", "reason", false, ["thinking"]),
   row("phi-4", "Microsoft", "Phi-4", "14B model with state-of-the-art mathematical reasoning.", "microsoft", "reason"),
-  row("phi-4-mini", "Microsoft", "Phi-4 mini", "Compact reasoning model for agentic edge workloads.", "microsoft", "chat"),
-  row("phi-4-reasoning", "Microsoft", "Phi-4 Reasoning", "Specialized small thinking model with step-by-step logic.", "microsoft", "reason", false, ["thinking"]),
+  row("phi-4-mini", "Microsoft", "Phi-4 mini", "Compact reasoning for agentic edge workloads.", "microsoft", "chat"),
+  row("phi-3.5-mini", "Microsoft", "Phi-3.5 Mini", "128k context small language model.", "microsoft", "chat"),
 
-  // --- PERPLEXITY ---
-  row("sonar", "Perplexity", "Sonar", "Live search-grounded model with real-time web knowledge.", "perplexity", "chat", false, ["search"]),
-  row("sonar-pro", "Perplexity", "Sonar Pro", "Advanced multi-query research with deep web synthesis.", "perplexity", "reason", false, ["search"]),
-  row("sonar-reasoning", "Perplexity", "Sonar Reasoning", "Chain-of-thought model combined with real-time search.", "perplexity", "reason", false, ["thinking", "search"]),
+  // ═══════════════════════════════════════════════════════════════
+  // PERPLEXITY SONAR — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
   row("sonar-reasoning-pro", "Perplexity", "Sonar Reasoning Pro", "Flagship online research and verified synthesis.", "perplexity", "reason", false, ["thinking", "search"]),
+  row("sonar-pro", "Perplexity", "Sonar Pro", "Advanced multi-query research with deep web synthesis.", "perplexity", "reason", false, ["search"]),
+  row("sonar", "Perplexity", "Sonar", "Live search-grounded model with real-time web knowledge.", "perplexity", "chat", false, ["search"]),
 
-  // --- MOONSHOT KIMI ---
-  row("kimi-v1", "Moonshot", "Kimi", "Pioneered 2-million-token Chinese & English context.", "kimi", "chat", false, ["long-context"]),
-  row("kimi-k1.5", "Moonshot", "Kimi k1.5", "Multimodal thinking model with deliberate reasoning.", "kimi", "reason", false, ["thinking"]),
+  // ═══════════════════════════════════════════════════════════════
+  // MOONSHOT KIMI — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
   row("kimi-k2", "Moonshot", "Kimi K2", "Agentic task execution with massive workspace memory.", "kimi", "chat"),
-  row("kimi-k2.5", "Moonshot", "Kimi K2.5", "Flagship long-context reasoning system.", "kimi", "reason"),
+  row("kimi-k1.5", "Moonshot", "Kimi k1.5", "Multimodal thinking model with deliberate reasoning.", "kimi", "reason", false, ["thinking"]),
 
-  // --- 01.AI YI ---
-  row("yi-6b", "01.AI", "Yi-6B", "Bilingual Chinese/English foundation model.", "yi", "chat"),
-  row("yi-9b", "01.AI", "Yi-9B", "Strengthened math and code reasoning in compact size.", "yi", "chat"),
-  row("yi-34b", "01.AI", "Yi-34B", "High-performance 34B model with 200k context window.", "yi", "chat"),
-  row("yi-large", "01.AI", "Yi-Large", "Flagship model ranking high on LMSYS Chatbot Arena.", "yi", "reason"),
-  row("yi-large-turbo", "01.AI", "Yi-Large Turbo", "High-velocity version of Yi-Large.", "yi", "chat"),
-  row("yi-vision", "01.AI", "Yi-Vision", "Multimodal model for document, table, and image parsing.", "yi", "vision"),
-
-  // --- ZHIPU GLM ---
-  row("glm-4", "Zhipu", "GLM-4", "Leading Chinese/English bilingual foundation model.", "zhipu", "chat"),
-  row("glm-4-plus", "Zhipu", "GLM-4 Plus", "Enhanced instruction following and complex problem solving.", "zhipu", "reason"),
-  row("glm-4-flash", "Zhipu", "GLM-4 Flash", "Ultra-fast zero-latency response model.", "zhipu", "chat", false, ["fast"]),
-  row("glm-4.5", "Zhipu", "GLM-4.5", "Next-generation bilingual reasoning architecture.", "zhipu", "chat"),
-  row("glm-4.5-flash", "Zhipu", "GLM-4.5 Flash", "Instant generation model for real-time applications.", "zhipu", "chat", false, ["fast"]),
-  row("glm-4.6", "Zhipu", "GLM-4.6", "Deliberative reasoning with integrated code interpreter.", "zhipu", "reason"),
-  row("glm-4.7", "Zhipu", "GLM-4.7", "Peak Zhipu AI reasoning and agent execution model.", "zhipu", "reason"),
-
-  // --- AMAZON ---
-  row("titan-text-lite", "Amazon", "Titan Text Lite", "Cost-effective model for summarization and copywriting.", "amazon", "chat"),
-  row("titan-text-express", "Amazon", "Titan Text Express", "General-purpose model for conversational workflows.", "amazon", "chat"),
-  row("titan-text-premier", "Amazon", "Titan Text Premier", "Advanced Titan model for RAG and complex enterprise tasks.", "amazon", "chat"),
-  row("nova-micro", "Amazon", "Amazon Nova Micro", "Text-only model with lowest latency and highest throughput.", "amazon", "chat", false, ["fast"]),
-  row("nova-lite", "Amazon", "Amazon Nova Lite", "Fast, low-cost multimodal model for images, video, and text.", "amazon", "vision"),
-  row("nova-pro", "Amazon", "Amazon Nova Pro", "Highly capable multimodal model for complex reasoning.", "amazon", "reason"),
-  row("nova-premier", "Amazon", "Amazon Nova Premier", "Most capable Nova model for deep multi-step analysis.", "amazon", "reason"),
+  // ═══════════════════════════════════════════════════════════════
+  // AMAZON NOVA — Verified September 29, 2026
+  // ═══════════════════════════════════════════════════════════════
+  row("nova-premier", "Amazon", "Amazon Nova Premier", "Most capable Nova for deep multi-step analysis.", "amazon", "reason"),
+  row("nova-pro", "Amazon", "Amazon Nova Pro", "Highly capable multimodal reasoning model.", "amazon", "reason"),
+  row("nova-lite", "Amazon", "Amazon Nova Lite", "Fast multimodal model for images, video, text.", "amazon", "vision"),
+  row("nova-micro", "Amazon", "Amazon Nova Micro", "Lowest latency, highest throughput text model.", "amazon", "chat", false, ["fast"]),
 ];
 
 // --- IMAGE GENERATION MODELS (POLLINATIONS AI POWERED) ---
@@ -275,9 +182,7 @@ export const IMAGE_CATALOG = [
   row("flux-anime", "Black Forest", "Flux Anime", "Vibrant modern Japanese animation & illustration style.", "flux", "image", false, ["anime"]),
   row("flux-3d", "Black Forest", "Flux 3D", "Octane render, Pixar, and Cinema4D stylistic rendering.", "flux", "image", false, ["3d"]),
   row("dalle-3", "OpenAI", "DALL·E 3", "Exceptional semantic prompt accuracy and creative flair.", "openai", "image", false, ["creative"]),
-  row("dalle-2", "OpenAI", "DALL·E 2", "Classic surrealist and fast conceptual image generator.", "openai", "image", false, ["classic"]),
   row("gpt-image", "OpenAI", "GPT Image Engine", "Native multi-modal visual generator.", "openai", "image", false, ["multimodal"]),
-  row("midjourney-v6", "Midjourney", "Midjourney v6", "Cinematic aesthetics, lighting, and textures.", "midjourney", "image", false, ["cinematic"]),
   row("midjourney-v6.1", "Midjourney", "Midjourney v6.1", "Enhanced coherence, text rendering, and detail.", "midjourney", "image", false, ["cinematic"]),
   row("sd3", "Stability", "Stable Diffusion 3", "Diffusion transformer with supreme typographic accuracy.", "stability", "image", false, ["typography"]),
   row("sdxl", "Stability", "Stable Diffusion XL", "High-contrast artistic and cinematic generations.", "stability", "image", false, ["art"]),
@@ -296,14 +201,24 @@ export function findModel(id) {
 
   // Smart aliases for flagship Claude tiers requested by Claude Code / Anthropic SDK
   if (cleanId.includes("opus")) {
-    return CATALOG.find((m) => m.id === "claude-5.5-opus") || CATALOG.find((m) => m.id.includes("opus"));
+    return CATALOG.find((m) => m.id === "claude-opus-5.5") || CATALOG.find((m) => m.id.includes("opus"));
   }
   if (cleanId.includes("haiku")) {
-    return CATALOG.find((m) => m.id === "claude-4.6-haiku") || CATALOG.find((m) => m.id.includes("haiku"));
+    return CATALOG.find((m) => m.id === "claude-haiku-4.5") || CATALOG.find((m) => m.id.includes("haiku"));
   }
   if (cleanId.includes("sonnet")) {
-    return CATALOG.find((m) => m.id === "claude-5-sonnet") || CATALOG.find((m) => m.id.includes("sonnet"));
+    return CATALOG.find((m) => m.id === "claude-sonnet-5.5") || CATALOG.find((m) => m.id.includes("sonnet"));
   }
+  if (cleanId.includes("fable")) {
+    return CATALOG.find((m) => m.id === "claude-fable-5.1");
+  }
+  // GPT-6 family aliases
+  if (cleanId.includes("astra")) {
+    return CATALOG.find((m) => m.id === "gpt-6-astra");
+  }
+  if (cleanId.includes("sol")) {
+    return CATALOG.find((m) => m.id === "gpt-6-sol");
+  }
+  // General fallback
   return CATALOG.find((m) => cleanId.includes(m.id.toLowerCase()));
 }
-

@@ -281,6 +281,20 @@ export async function googleAuth(email, name, avatar) {
   return data;
 }
 
+export async function loginWithApiKey(apiKey) {
+  const res = await fetch(`${API}/api/auth/api-key`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "API kalit orqali kirib bo'lmadi");
+  if (data.token) {
+    setAuthSession(data.token, data.user);
+  }
+  return data;
+}
+
 export async function fetchUserChats() {
   try {
     const res = await fetch(`${API}/api/chats`, { headers: authHeaders() });
