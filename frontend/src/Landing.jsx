@@ -98,7 +98,7 @@ export default function Landing() {
             <a className="nav-link appear appear--soft" href="#mcp-info" style={{ "--d": "0.52s" }}>
               MCP Server
             </a>
-            <a className="nav-link appear appear--scale" href="/download/OryxgenSetup.exe" download="OryxgenSetup.exe" style={{ "--d": "0.58s" }}>
+            <a className="nav-link appear appear--scale" href="https://oryxgen-api.onrender.com/download/OryxgenSetup.exe" download="OryxgenSetup.exe" style={{ "--d": "0.58s" }}>
               Desktop (.exe)
             </a>
           </nav>
@@ -138,7 +138,7 @@ export default function Landing() {
               <Link className="btn btn-hero-ghost appear appear--side" to="/image" style={{ "--d": "1.10s" }}>
                 Tasvir yaratish
               </Link>
-              <a className="btn btn-hero-ghost appear appear--side" href="/download/OryxgenSetup.exe" download="OryxgenSetup.exe" style={{ "--d": "1.20s" }}>
+              <a className="btn btn-hero-ghost appear appear--side" href="https://oryxgen-api.onrender.com/download/OryxgenSetup.exe" download="OryxgenSetup.exe" style={{ "--d": "1.20s" }}>
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: "6px", verticalAlign: "middle" }}>
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="7 10 12 15 17 10" />

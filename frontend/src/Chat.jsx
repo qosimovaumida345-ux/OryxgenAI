@@ -1173,7 +1173,7 @@ export default function Chat() {
               </Link>
               {typeof window !== "undefined" && !(window.oryxgenDesktop || window.electronAPI) && (
                 <a
-                  href="/download/OryxgenSetup.exe"
+                  href="https://oryxgen-api.onrender.com/download/OryxgenSetup.exe"
                   download="OryxgenSetup.exe"
                   className="nav-btn-action"
                   title="Oryxgen AI Desktop ilovasini kompyuteringizga o'rnating (.exe)"

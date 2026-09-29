@@ -1,10 +1,17 @@
 import fs from "fs";
 import path from "path";
-import pg from "pg";
+let pg = null;
+try {
+  pg = (await import("pg")).default;
+} catch {
+  try {
+    pg = (await import("../backend/node_modules/pg/lib/index.js")).default;
+  } catch {}
+}
 
 const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB chunks
 const INSTALLER_PATH = path.resolve("desktop", "OryxgenSetup.exe");
-const SERVER_URL = process.env.SERVER_URL || "https://avg-ai-creator.site";
+const SERVER_URL = process.env.SERVER_URL || "https://oryxgen-api.onrender.com";
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "oryxgen-ultra-secret-key-2026";
 
 async function pushDirectToPostgres(dbUrl) {
