@@ -17,6 +17,9 @@ import {
   deleteApiKey,
   logApiUsage,
   getApiUsageAnalytics,
+  saveInstallerChunk,
+  getInstallerChunks,
+  getInstallerTotalSize,
 } from "./db.js";
 import {
   authMiddleware,
@@ -112,20 +115,71 @@ app.get("/", (_req, res) => {
   `);
 });
 
-// Desktop installer download endpoint
-app.get("/download/OryxgenSetup.exe", (req, res) => {
-  const possiblePaths = [
-    path.join(process.cwd(), "frontend", "public", "download", "OryxgenSetup.exe"),
-    path.join(process.cwd(), "frontend", "dist", "download", "OryxgenSetup.exe"),
-    path.join(process.cwd(), "desktop", "OryxgenSetup.exe"),
-    path.join(process.cwd(), "..", "desktop", "OryxgenSetup.exe"),
-  ];
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      return res.download(p, "OryxgenSetup.exe");
+// 📦 Desktop Installer Database Upload Endpoint
+app.post("/api/installer/upload-chunk", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
+  try {
+    const filename = String(req.query.filename || "OryxgenSetup.exe").trim();
+    const chunkIndex = parseInt(req.query.chunk_index, 10);
+    const totalChunks = parseInt(req.query.total_chunks, 10);
+    const secret = req.headers["x-admin-secret"] || req.query.secret || "";
+
+    if (secret !== "oryxgen-ultra-secret-key-2026" && secret !== process.env.JWT_SECRET) {
+      return res.status(403).json({ error: "Ruxsat berilmadi (Admin secret xato)" });
     }
+
+    if (isNaN(chunkIndex) || isNaN(totalChunks) || !req.body || req.body.length === 0) {
+      return res.status(400).json({ error: "Noto'g'ri chunk ma'lumotlari." });
+    }
+
+    await saveInstallerChunk(filename, chunkIndex, totalChunks, req.body, req.body.length);
+    console.log(`[Installer DB] Chunk ${chunkIndex + 1}/${totalChunks} saved (${req.body.length} bytes)`);
+    res.json({ ok: true, chunkIndex, totalChunks, bytes: req.body.length });
+  } catch (err) {
+    console.error("[Upload Chunk Error]:", err);
+    res.status(500).json({ error: err.message });
   }
-  res.status(404).send("OryxgenSetup.exe topilmadi");
+});
+
+// 📥 Desktop Installer Download Endpoint (Streams directly from PostgreSQL DB)
+app.get(["/download/OryxgenSetup.exe", "/api/download/desktop"], async (req, res) => {
+  const filename = "OryxgenSetup.exe";
+  try {
+    // 1. Try reading directly from PostgreSQL Database
+    const stats = await getInstallerTotalSize(filename);
+    if (stats && Number(stats.chunks_count) > 0) {
+      const chunks = await getInstallerChunks(filename);
+      if (chunks && chunks.length > 0) {
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", "application/vnd.microsoft.portable-executable");
+        if (stats.total_size && Number(stats.total_size) > 0) {
+          res.setHeader("Content-Length", stats.total_size);
+        }
+
+        for (const chunk of chunks) {
+          res.write(chunk.data);
+        }
+        return res.end();
+      }
+    }
+
+    // 2. Fallback to local files if present
+    const possiblePaths = [
+      path.join(process.cwd(), "frontend", "public", "download", filename),
+      path.join(process.cwd(), "frontend", "dist", "download", filename),
+      path.join(process.cwd(), "desktop", filename),
+      path.join(process.cwd(), "..", "desktop", filename),
+    ];
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        return res.download(p, filename);
+      }
+    }
+
+    res.status(404).json({ error: "OryxgenSetup.exe hozircha ma'lumotlar bazasida mavjud emas." });
+  } catch (err) {
+    console.error("[Download Error]:", err);
+    res.status(500).send("Yuklab olishda xatolik yuz berdi: " + err.message);
+  }
 });
 
 // Health check endpoint

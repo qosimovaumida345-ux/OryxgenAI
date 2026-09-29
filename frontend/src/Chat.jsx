@@ -893,7 +893,11 @@ export default function Chat() {
       {showDesktopAuthBanner && currentUser && (
         <div className="desktop-auth-top-banner">
           <div className="desktop-auth-content">
-            <span className="desktop-auth-icon">🖥️</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
             <div className="desktop-auth-text">
               <strong>Oryxgen Desktop ilovasi uchun kirish tasdiqlandi:</strong>
               <span>{currentUser.name || currentUser.email} sifatida kirdingiz</span>
@@ -1001,15 +1005,20 @@ export default function Chat() {
             </svg>
             MCP Server (Claude / Cursor)
           </button>
-          <button
-            type="button"
-            className="sidebar-tool-btn"
-            style={{ color: "#00f0ff" }}
-            onClick={() => setIsDeviceModalOpen(true)}
-          >
-            <span style={{ fontSize: "14px", marginRight: "3px" }}>🛡️</span>
-            Device Access & Computer Use
-          </button>
+          {typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI) && (
+            <button
+              type="button"
+              className="sidebar-tool-btn"
+              onClick={() => setIsDeviceModalOpen(true)}
+            >
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              Device Access & Computer Use
+            </button>
+          )}
           <Link to="/image" className="sidebar-tool-btn">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -1139,29 +1148,42 @@ export default function Chat() {
                 onClick={() => setIsApiModalOpen(true)}
                 title="Oryxgen AI Developer Platform & NPM CLI"
               >
-                ⚡ API Platformasi
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                <span>API Platformasi</span>
               </button>
-              <button
-                type="button"
-                className="nav-btn-action"
-                style={{ borderColor: "rgba(0, 240, 255, 0.4)", color: "#00f0ff" }}
-                onClick={() => setIsDeviceModalOpen(true)}
-                title="Device Access & Computer Use"
-              >
-                🛡️ Device Access
-              </button>
+              {typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI) && (
+                <button
+                  type="button"
+                  className="nav-btn-action"
+                  onClick={() => setIsDeviceModalOpen(true)}
+                  title="Device Access & Computer Use"
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                  </svg>
+                  <span>Device Access</span>
+                </button>
+              )}
               <Link to="/image" className="nav-btn-action">
                 Tasvir
               </Link>
               {typeof window !== "undefined" && !(window.oryxgenDesktop || window.electronAPI) && (
                 <a
-                  href="./download/OryxgenSetup.exe"
+                  href="/download/OryxgenSetup.exe"
                   download="OryxgenSetup.exe"
                   className="nav-btn-action"
-                  style={{ borderColor: "rgba(56, 189, 248, 0.45)", color: "#38bdf8" }}
                   title="Oryxgen AI Desktop ilovasini kompyuteringizga o'rnating (.exe)"
                 >
-                  📥 Desktop Ilova
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <span>Desktop Ilova</span>
                 </a>
               )}
               {!currentUser && (

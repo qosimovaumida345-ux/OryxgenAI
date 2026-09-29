@@ -105,6 +105,16 @@ export async function initDb() {
         duration_ms INTEGER DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS app_installers (
+        id VARCHAR(100) PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        total_chunks INTEGER NOT NULL,
+        data BYTEA NOT NULL,
+        size BIGINT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
     `);
 
     client.release();
@@ -526,4 +536,59 @@ export async function getApiUsageAnalytics(userId) {
     buckets,
     modelStats,
   };
+}
+
+// 📦 Database App Installers Binary Management
+export async function saveInstallerChunk(filename, chunkIndex, totalChunks, dataBuffer, chunkSize) {
+  const chunkId = `${filename}_chunk_${chunkIndex}`;
+  if (!pool) {
+    if (!inMemory.installerChunks) inMemory.installerChunks = new Map();
+    inMemory.installerChunks.set(chunkId, {
+      id: chunkId,
+      filename,
+      chunk_index: chunkIndex,
+      total_chunks: totalChunks,
+      data: dataBuffer,
+      size: chunkSize,
+    });
+    return { ok: true, chunkId };
+  }
+
+  await pool.query(
+    `INSERT INTO app_installers (id, filename, chunk_index, total_chunks, data, size)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, size = EXCLUDED.size, created_at = NOW()`,
+    [chunkId, filename, chunkIndex, totalChunks, dataBuffer, chunkSize]
+  );
+  return { ok: true, chunkId };
+}
+
+export async function getInstallerChunks(filename) {
+  if (!pool) {
+    if (!inMemory.installerChunks) return [];
+    return Array.from(inMemory.installerChunks.values())
+      .filter((c) => c.filename === filename)
+      .sort((a, b) => a.chunk_index - b.chunk_index);
+  }
+
+  const res = await pool.query(
+    `SELECT id, chunk_index, total_chunks, data, size FROM app_installers
+     WHERE filename = $1 ORDER BY chunk_index ASC`,
+    [filename]
+  );
+  return res.rows;
+}
+
+export async function getInstallerTotalSize(filename) {
+  if (!pool) {
+    const chunks = await getInstallerChunks(filename);
+    const total = chunks.reduce((acc, c) => acc + Number(c.size), 0);
+    return { total_size: total, chunks_count: chunks.length };
+  }
+  const res = await pool.query(
+    `SELECT COALESCE(SUM(size), 0) as total_size, COALESCE(MAX(total_chunks), 0) as total_chunks, COUNT(*) as chunks_count
+     FROM app_installers WHERE filename = $1`,
+    [filename]
+  );
+  return res.rows[0];
 }
