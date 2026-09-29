@@ -1,5 +1,10 @@
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 let pg = null;
 try {
   pg = (await import("pg")).default;
@@ -10,9 +15,10 @@ try {
 }
 
 const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB chunks
-const INSTALLER_PATH = path.resolve("desktop", "OryxgenSetup.exe");
+const INSTALLER_PATH = path.resolve(__dirname, "OryxgenSetup.exe");
 const SERVER_URL = process.env.SERVER_URL || "https://oryxgen-api.onrender.com";
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "oryxgen-ultra-secret-key-2026";
+const FILENAME = "OryxgenSetup.exe";
 
 async function pushDirectToPostgres(dbUrl) {
   console.log("🔗 Connecting directly to PostgreSQL database...");
@@ -36,50 +42,73 @@ async function pushDirectToPostgres(dbUrl) {
     );
   `);
 
+  console.log(`🧹 Deleting old chunks for ${FILENAME} from database...`);
+  await client.query("DELETE FROM app_installers WHERE filename = $1", [FILENAME]);
+  console.log("✅ Old chunks cleared successfully!");
+
   const fileBuffer = fs.readFileSync(INSTALLER_PATH);
   const totalSize = fileBuffer.length;
   const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
-  const filename = "OryxgenSetup.exe";
 
-  console.log(`📦 File: ${filename} (${(totalSize / 1024 / 1024).toFixed(2)} MB) in ${totalChunks} chunks`);
+  console.log(`📦 Uploading: ${FILENAME} (${(totalSize / 1024 / 1024).toFixed(2)} MB) in ${totalChunks} chunks...`);
 
   for (let i = 0; i < totalChunks; i++) {
     const start = i * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, totalSize);
     const chunkData = fileBuffer.subarray(start, end);
-    const chunkId = `${filename}_chunk_${i}`;
+    const chunkId = `${FILENAME}_chunk_${i}`;
 
     await client.query(
       `INSERT INTO app_installers (id, filename, chunk_index, total_chunks, data, size)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, size = EXCLUDED.size, created_at = NOW()`,
-      [chunkId, filename, i, totalChunks, chunkData, chunkData.length]
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [chunkId, FILENAME, i, totalChunks, chunkData, chunkData.length]
     );
 
     const percent = (((i + 1) / totalChunks) * 100).toFixed(1);
     console.log(`  -> Chunk [${i + 1}/${totalChunks}] uploaded (${chunkData.length} bytes) - ${percent}%`);
   }
 
+  // Verify total uploaded size
+  const check = await client.query(
+    "SELECT COUNT(*) as cnt, SUM(size) as total FROM app_installers WHERE filename = $1",
+    [FILENAME]
+  );
+  console.log(`\n🔍 Verification: ${check.rows[0].cnt} chunks, ${check.rows[0].total} bytes in DB (Local: ${totalSize} bytes)`);
+
   client.release();
   await pool.end();
-  console.log("\n🎉 OryxgenSetup.exe successfully pushed to PostgreSQL database!");
+  console.log("\n🎉 OryxgenSetup.exe successfully pushed to PostgreSQL database with 0 errors!");
 }
 
 async function pushViaServerApi() {
-  console.log(`🌐 Pushing installer to server database via API: ${SERVER_URL}/api/installer/upload-chunk`);
+  console.log(`🌐 Connecting to server API: ${SERVER_URL}`);
+
+  // 1. Clear old installer chunks
+  console.log(`🧹 Requesting server to clear old ${FILENAME}...`);
+  try {
+    const delRes = await fetch(`${SERVER_URL}/api/installer/${encodeURIComponent(FILENAME)}`, {
+      method: "DELETE",
+      headers: { "x-admin-secret": ADMIN_SECRET },
+    });
+    if (delRes.ok) {
+      console.log("✅ Server cleared old installer chunks!");
+    }
+  } catch (err) {
+    console.warn("⚠️ Clear request warning:", err.message);
+  }
+
   const fileBuffer = fs.readFileSync(INSTALLER_PATH);
   const totalSize = fileBuffer.length;
   const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
-  const filename = "OryxgenSetup.exe";
 
-  console.log(`📦 File: ${filename} (${(totalSize / 1024 / 1024).toFixed(2)} MB) in ${totalChunks} chunks`);
+  console.log(`📦 Uploading: ${FILENAME} (${(totalSize / 1024 / 1024).toFixed(2)} MB) in ${totalChunks} chunks...`);
 
   for (let i = 0; i < totalChunks; i++) {
     const start = i * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, totalSize);
     const chunkData = fileBuffer.subarray(start, end);
 
-    const url = `${SERVER_URL}/api/installer/upload-chunk?filename=${encodeURIComponent(filename)}&chunk_index=${i}&total_chunks=${totalChunks}`;
+    const url = `${SERVER_URL}/api/installer/upload-chunk?filename=${encodeURIComponent(FILENAME)}&chunk_index=${i}&total_chunks=${totalChunks}`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -112,7 +141,6 @@ async function main() {
   if (customDbUrl && customDbUrl.startsWith("postgres")) {
     await pushDirectToPostgres(customDbUrl);
   } else {
-    // If no direct DB url, attempt API upload
     try {
       await pushViaServerApi();
     } catch (err) {

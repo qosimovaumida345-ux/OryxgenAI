@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -23,6 +24,9 @@ namespace OryxgenInstaller
 
     public class InstallerForm : Form
     {
+        [DllImport("shell32.dll")]
+        public static extern void SHChangeNotify(int wEventId, int uFlags, IntPtr dwItem1, IntPtr dwItem2);
+
         private ProgressBar progressBar;
         private Label statusLabel;
         private Label titleLabel;
@@ -39,7 +43,7 @@ namespace OryxgenInstaller
 
         public InstallerForm()
         {
-            this.Text = "Oryxgen AI — O'rnatish Dasturi";
+            this.Text = "Oryxgen AI Setup";
             this.Size = new Size(520, 360);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -48,11 +52,13 @@ namespace OryxgenInstaller
             this.ForeColor = Color.White;
             this.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
 
-            // Try load icon
-            string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico");
+            // Load Window Icon
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string iconPath = Path.Combine(baseDir, "icon.ico");
+            if (!File.Exists(iconPath)) iconPath = Path.Combine(baseDir, "desktop", "icon.ico");
             if (File.Exists(iconPath))
             {
-                try { this.Icon = new Icon(iconPath); } catch {}
+                try { this.Icon = new Icon(iconPath); } catch { }
             }
 
             InitUi();
@@ -77,13 +83,23 @@ namespace OryxgenInstaller
 
             // Load Logo
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string logoPath = Path.Combine(baseDir, "dist", "Logo.png");
-            if (!File.Exists(logoPath)) logoPath = Path.Combine(baseDir, "Logo.png");
+            string logoPath = Path.Combine(baseDir, "Logo.png");
+            if (!File.Exists(logoPath)) logoPath = Path.Combine(baseDir, "dist", "Logo.png");
+            if (!File.Exists(logoPath)) logoPath = Path.Combine(baseDir, "desktop", "dist", "Logo.png");
             if (!File.Exists(logoPath)) logoPath = Path.Combine(baseDir, "..", "dist", "Logo.png");
 
             if (File.Exists(logoPath))
             {
-                try { logoBox.Image = Image.FromFile(logoPath); } catch {}
+                try { logoBox.Image = Image.FromFile(logoPath); } catch { }
+            }
+            else
+            {
+                string iconPath = Path.Combine(baseDir, "icon.ico");
+                if (!File.Exists(iconPath)) iconPath = Path.Combine(baseDir, "desktop", "icon.ico");
+                if (File.Exists(iconPath))
+                {
+                    try { logoBox.Image = new Icon(iconPath, 64, 64).ToBitmap(); } catch { }
+                }
             }
 
             titleLabel = new Label
@@ -158,30 +174,38 @@ namespace OryxgenInstaller
         {
             installButton.Enabled = false;
             installButton.Text = "O'rnatilmoqda...";
-            progressBar.Style = ProgressBarStyle.Marquee;
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Value = 10;
 
-            Thread worker = new Thread(DoInstall);
-            worker.IsBackground = true;
-            worker.Start();
+            ThreadPool.QueueUserWorkItem(InstallWorker);
         }
 
-        private void DoInstall()
+        private void InstallWorker(object state)
         {
             try
             {
-                UpdateStatus("Eski jarayonlar tekshirilmoqda...", 10);
-                foreach (var proc in Process.GetProcessesByName("OryxgenAI"))
+                UpdateStatus("Eski jarayonlar to'xtatilmoqda va tozalanmoqda...", 15);
+                foreach (var procName in new[] { "OryxgenAI", "electron" })
                 {
-                    try { proc.Kill(); proc.WaitForExit(2000); } catch {}
+                    try
+                    {
+                        foreach (var p in Process.GetProcessesByName(procName))
+                        {
+                            try { p.Kill(); } catch { }
+                        }
+                    }
+                    catch { }
                 }
+                Thread.Sleep(500);
 
-                UpdateStatus("O'rnatish katalogi tayyorlanmoqda...", 25);
-                if (!Directory.Exists(installDir))
+                UpdateStatus("Kataloglar tayyorlanmoqda...", 25);
+                if (Directory.Exists(installDir))
                 {
-                    Directory.CreateDirectory(installDir);
+                    try { Directory.Delete(installDir, true); } catch { }
                 }
+                Directory.CreateDirectory(installDir);
 
-                UpdateStatus("Ilova fayllari ko'chirilmoqda...", 40);
+                UpdateStatus("Ilova fayllari ko'chirilmoqda...", 45);
                 string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                 string payloadPath = Path.Combine(baseDir, "payload.zip");
                 if (!File.Exists(payloadPath)) payloadPath = Path.Combine(baseDir, "desktop", "payload.zip");
@@ -213,7 +237,7 @@ namespace OryxgenInstaller
 
                 if (File.Exists(payloadPath))
                 {
-                    UpdateStatus("Fayllar arxivdan chiqarilmoqda...", 60);
+                    UpdateStatus("Fayllar arxivdan chiqarilmoqda...", 65);
                     using (ZipArchive archive = ZipFile.OpenRead(payloadPath))
                     {
                         foreach (ZipArchiveEntry entry in archive.Entries)
@@ -244,12 +268,40 @@ namespace OryxgenInstaller
                     }
                 }
 
+                // Copy icon.ico to install root if missing
+                string rootIcon = Path.Combine(installDir, "icon.ico");
+                if (!File.Exists(rootIcon))
+                {
+                    string srcIcon = Path.Combine(baseDir, "icon.ico");
+                    if (!File.Exists(srcIcon)) srcIcon = Path.Combine(baseDir, "desktop", "icon.ico");
+                    if (!File.Exists(srcIcon)) srcIcon = Path.Combine(installDir, "resources", "app", "icon.ico");
+                    if (File.Exists(srcIcon)) File.Copy(srcIcon, rootIcon, true);
+                }
+
+                // Copy Uninstall.exe to install root if missing
+                string rootUninstall = Path.Combine(installDir, "Uninstall.exe");
+                if (!File.Exists(rootUninstall))
+                {
+                    string srcUninstall = Path.Combine(baseDir, "Uninstall.exe");
+                    if (!File.Exists(srcUninstall)) srcUninstall = Path.Combine(baseDir, "desktop", "app-build", "Uninstall.exe");
+                    if (File.Exists(srcUninstall)) File.Copy(srcUninstall, rootUninstall, true);
+                }
+
                 UpdateStatus("Windows reestri va protokollari sozlanmoqda...", 80);
                 string mainExe = Path.Combine(installDir, "OryxgenAI.exe");
-                RegisterProtocol(mainExe);
+                RegisterProtocol(mainExe, rootIcon);
+                RegisterAppPaths(mainExe, installDir);
+                RegisterWindowsUninstall(mainExe, rootUninstall, rootIcon, installDir);
 
                 UpdateStatus("Start menyu yorlig'i yaratilmoqda...", 90);
-                CreateStartMenuShortcut(mainExe);
+                CreateStartMenuShortcut(mainExe, rootIcon);
+
+                // Notify Windows Explorer of association/icon updates
+                try
+                {
+                    SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); // SHCNE_ASSOCCHANGED
+                }
+                catch { }
 
                 UpdateStatus("Muvaffaqiyatli o'rnatildi! Ilova ishga tushirilmoqda...", 100);
                 Thread.Sleep(800);
@@ -278,27 +330,32 @@ namespace OryxgenInstaller
 
         private void CopyDirectory(string sourceDir, string targetDir)
         {
-            foreach (string dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(targetDir);
+            foreach (string file in Directory.GetFiles(sourceDir))
             {
-                Directory.CreateDirectory(dir.Replace(sourceDir, targetDir));
+                string targetFilePath = Path.Combine(targetDir, Path.GetFileName(file));
+                File.Copy(file, targetFilePath, true);
             }
-            foreach (string file in Directory.GetFiles(sourceDir, "*.*", SearchOption.AllDirectories))
+            foreach (string subDir in Directory.GetDirectories(sourceDir))
             {
-                File.Copy(file, file.Replace(sourceDir, targetDir), true);
+                string targetSubDir = Path.Combine(targetDir, Path.GetFileName(subDir));
+                CopyDirectory(subDir, targetSubDir);
             }
         }
 
-        private void RegisterProtocol(string exePath)
+        private void RegisterProtocol(string exePath, string iconPath)
         {
             try
             {
                 using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Classes\oryxgen"))
                 {
-                    key.SetValue("", "URL:Oryxgen Protocol");
+                    key.SetValue("", "URL:Oryxgen AI Protocol");
                     key.SetValue("URL Protocol", "");
+
                     using (var iconKey = key.CreateSubKey("DefaultIcon"))
                     {
-                        iconKey.SetValue("", "\"" + exePath + "\",0");
+                        string ico = File.Exists(iconPath) ? iconPath : exePath;
+                        iconKey.SetValue("", "\"" + ico + "\",0");
                     }
                     using (var cmdKey = key.CreateSubKey(@"shell\open\command"))
                     {
@@ -306,10 +363,48 @@ namespace OryxgenInstaller
                     }
                 }
             }
-            catch {}
+            catch { }
         }
 
-        private void CreateStartMenuShortcut(string targetExe)
+        private void RegisterAppPaths(string exePath, string dirPath)
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\OryxgenAI.exe"))
+                {
+                    key.SetValue("", exePath);
+                    key.SetValue("Path", dirPath);
+                }
+            }
+            catch { }
+        }
+
+        private void RegisterWindowsUninstall(string exePath, string uninstallExe, string iconPath, string dirPath)
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\OryxgenAI"))
+                {
+                    key.SetValue("DisplayName", "Oryxgen AI");
+                    key.SetValue("DisplayVersion", "2.5.0");
+                    key.SetValue("Publisher", "Oryxgen AI LLC");
+                    
+                    string ico = File.Exists(iconPath) ? iconPath : exePath;
+                    key.SetValue("DisplayIcon", "\"" + ico + "\",0");
+                    key.SetValue("InstallLocation", dirPath);
+                    key.SetValue("UninstallString", "\"" + uninstallExe + "\"");
+                    key.SetValue("QuietUninstallString", "\"" + uninstallExe + "\" /quiet");
+                    key.SetValue("EstimatedSize", 188000, RegistryValueKind.DWord);
+                    key.SetValue("HelpLink", "https://avg-ai-creator.site");
+                    key.SetValue("URLInfoAbout", "https://avg-ai-creator.site");
+                    key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+                    key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                }
+            }
+            catch { }
+        }
+
+        private void CreateStartMenuShortcut(string targetExe, string iconPath)
         {
             try
             {
@@ -325,10 +420,12 @@ namespace OryxgenInstaller
                 shortcut.TargetPath = targetExe;
                 shortcut.WorkingDirectory = Path.GetDirectoryName(targetExe);
                 shortcut.Description = "Oryxgen AI — Autonomous Desktop & CodeX Platform";
-                shortcut.IconLocation = targetExe + ",0";
+                
+                string ico = File.Exists(iconPath) ? iconPath : targetExe;
+                shortcut.IconLocation = ico + ",0";
                 shortcut.Save();
             }
-            catch {}
+            catch { }
         }
 
         private void UpdateStatus(string message, int progress)

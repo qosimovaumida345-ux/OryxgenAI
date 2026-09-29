@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld("oryxgenDesktop", {
 
   // External Browser & Deep Link Auth
   openExternal: (url) => ipcRenderer.invoke("app:open-external", url),
+  getPendingAuthDeepLink: () => ipcRenderer.invoke("auth:get_pending_deep_link"),
   onAuthDeepLink: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on("auth:deep-link", handler);

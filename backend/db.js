@@ -539,6 +539,19 @@ export async function getApiUsageAnalytics(userId) {
 }
 
 // 📦 Database App Installers Binary Management
+export async function clearInstallerChunks(filename) {
+  if (!pool) {
+    if (inMemory.installerChunks) {
+      for (const [key, val] of inMemory.installerChunks.entries()) {
+        if (val.filename === filename) inMemory.installerChunks.delete(key);
+      }
+    }
+    return { ok: true };
+  }
+  await pool.query("DELETE FROM app_installers WHERE filename = $1", [filename]);
+  return { ok: true };
+}
+
 export async function saveInstallerChunk(filename, chunkIndex, totalChunks, dataBuffer, chunkSize) {
   const chunkId = `${filename}_chunk_${chunkIndex}`;
   if (!pool) {

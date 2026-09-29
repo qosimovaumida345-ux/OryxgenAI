@@ -12,6 +12,7 @@ import {
   streamChat,
   streamCodexGenerate,
   getAuthToken,
+  setAuthSession,
   getUserSystemPrompt,
   updateUserSystemPrompt,
 } from "./api";
@@ -402,6 +403,43 @@ export default function Chat() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const thinkingTimerRef = useRef(null);
+
+  // Listen to deep-link authentication in Desktop mode
+  useEffect(() => {
+    const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
+    if (!desktopApi) return;
+
+    if (desktopApi.getPendingAuthDeepLink) {
+      desktopApi.getPendingAuthDeepLink().then((data) => {
+        if (data?.token && data?.user) {
+          setAuthSession(data.token, data.user);
+          setCurrentUser(data.user);
+          setIsAuthOpen(false);
+        } else if (data?.user) {
+          setAuthSession("auth_success", data.user);
+          setCurrentUser(data.user);
+          setIsAuthOpen(false);
+        }
+      }).catch(() => {});
+    }
+
+    if (desktopApi.onAuthDeepLink) {
+      const unsub = desktopApi.onAuthDeepLink((data) => {
+        if (data?.token && data?.user) {
+          setAuthSession(data.token, data.user);
+          setCurrentUser(data.user);
+          setIsAuthOpen(false);
+        } else if (data?.user) {
+          setAuthSession("auth_success", data.user);
+          setCurrentUser(data.user);
+          setIsAuthOpen(false);
+        }
+      });
+      return () => {
+        if (typeof unsub === "function") unsub();
+      };
+    }
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -906,12 +944,22 @@ export default function Chat() {
               type="button"
               className="desktop-auth-open-btn"
               onClick={() => {
-                const token = localStorage.getItem("oryxgen_token") || "";
+                const token = getAuthToken() || localStorage.getItem("oryxgen_auth_token") || localStorage.getItem("oryxgen_token") || "auth_success";
                 const userJson = encodeURIComponent(JSON.stringify(currentUser));
-                window.location.href = `oryxgen://auth?token=${encodeURIComponent(token)}&user=${userJson}`;
+                const deepLinkUrl = `oryxgen://auth?token=${encodeURIComponent(token)}&user=${userJson}`;
+                
+                try {
+                  const iframe = document.createElement("iframe");
+                  iframe.style.display = "none";
+                  iframe.src = deepLinkUrl;
+                  document.body.appendChild(iframe);
+                  setTimeout(() => iframe.remove(), 2500);
+                } catch { }
+
+                window.location.href = deepLinkUrl;
                 setTimeout(() => {
-                  try { window.close(); } catch {}
-                }, 1200);
+                  try { window.close(); } catch { }
+                }, 1500);
               }}
             >
               Desktop Ilovada Ochish ↗

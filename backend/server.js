@@ -18,6 +18,7 @@ import {
   logApiUsage,
   getApiUsageAnalytics,
   saveInstallerChunk,
+  clearInstallerChunks,
   getInstallerChunks,
   getInstallerTotalSize,
 } from "./db.js";
@@ -116,6 +117,21 @@ app.get("/", (_req, res) => {
 });
 
 // 📦 Desktop Installer Database Upload Endpoint
+app.delete(["/api/installer/clear", "/api/installer/:filename"], async (req, res) => {
+  try {
+    const secret = req.headers["x-admin-secret"] || req.query.secret || "";
+    if (secret !== "oryxgen-ultra-secret-key-2026" && secret !== process.env.JWT_SECRET) {
+      return res.status(403).json({ error: "Ruxsat berilmadi (Admin secret xato)" });
+    }
+    const filename = String(req.params.filename || req.query.filename || "OryxgenSetup.exe").trim();
+    await clearInstallerChunks(filename);
+    console.log(`[Installer DB] Cleared old chunks for ${filename}`);
+    res.json({ ok: true, message: `${filename} bazadagi eski chunklari tozalandi.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/installer/upload-chunk", express.raw({ type: "*/*", limit: "30mb" }), async (req, res) => {
   try {
     const filename = String(req.query.filename || "OryxgenSetup.exe").trim();
@@ -129,6 +145,11 @@ app.post("/api/installer/upload-chunk", express.raw({ type: "*/*", limit: "30mb"
 
     if (isNaN(chunkIndex) || isNaN(totalChunks) || !req.body || req.body.length === 0) {
       return res.status(400).json({ error: "Noto'g'ri chunk ma'lumotlari." });
+    }
+
+    // Auto-clear old chunks when first chunk arrives if requested
+    if (chunkIndex === 0 && req.query.clear_first === "true") {
+      await clearInstallerChunks(filename);
     }
 
     await saveInstallerChunk(filename, chunkIndex, totalChunks, req.body, req.body.length);

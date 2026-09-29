@@ -7,8 +7,8 @@
   "scripts": {
     "start": "electron ."
   },
-  "dependencies": {},
   "devDependencies": {
-    "electron": "^44.5.0"
+    "electron": "^44.5.0",
+    "rcedit": "^5.0.2"
   }
 }

@@ -41,10 +41,22 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
   useEffect(() => {
     if (!isDesktop) return;
     const desktopApi = window.oryxgenDesktop || window.electronAPI;
-    if (desktopApi?.onAuthDeepLink) {
+    if (!desktopApi) return;
+
+    if (desktopApi.getPendingAuthDeepLink) {
+      desktopApi.getPendingAuthDeepLink().then((data) => {
+        if (data?.user) {
+          setAuthSession(data.token || "auth_success", data.user);
+          onAuthSuccess(data.user);
+          if (onClose) onClose();
+        }
+      }).catch(() => {});
+    }
+
+    if (desktopApi.onAuthDeepLink) {
       const unsubscribe = desktopApi.onAuthDeepLink((data) => {
-        if (data?.token && data?.user) {
-          setAuthSession(data.token, data.user);
+        if (data?.user) {
+          setAuthSession(data.token || "auth_success", data.user);
           onAuthSuccess(data.user);
           if (onClose) onClose();
         }

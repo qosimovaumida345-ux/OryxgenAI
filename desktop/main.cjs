@@ -90,7 +90,9 @@ function createWindow() {
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
-    const initialUrl = process.argv.find((arg) => typeof arg === "string" && arg.startsWith("oryxgen://"));
+    const initialUrl = process.argv
+      .map((arg) => (typeof arg === "string" ? arg.trim().replace(/^"|"$/g, "") : ""))
+      .find((arg) => arg.toLowerCase().startsWith("oryxgen://"));
     if (initialUrl) {
       setTimeout(() => handleDeepLinkUrl(initialUrl), 600);
     }
@@ -243,13 +245,23 @@ ipcMain.handle("app:open-external", async (e, url) => {
   }
 });
 
+let pendingAuthData = null;
+
+ipcMain.handle("auth:get_pending_deep_link", () => {
+  const data = pendingAuthData;
+  pendingAuthData = null;
+  return data;
+});
+
 // 🔗 Deep Link Protocol Handler
 function handleDeepLinkUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== "string") return;
   try {
-    const cleanUrl = rawUrl.trim();
-    if (!cleanUrl.startsWith("oryxgen://")) return;
+    let cleanUrl = rawUrl.trim().replace(/^"|"$/g, "");
+    if (!cleanUrl.toLowerCase().startsWith("oryxgen://")) return;
 
+    // Normalize URL
+    if (cleanUrl.endsWith("/")) cleanUrl = cleanUrl.slice(0, -1);
     const urlObj = new URL(cleanUrl);
     const token = urlObj.searchParams.get("token") || "";
     const userRaw = urlObj.searchParams.get("user");
@@ -264,11 +276,14 @@ function handleDeepLinkUrl(rawUrl) {
       }
     }
 
-    if (token && mainWindow) {
-      mainWindow.webContents.send("auth:deep-link", { token, user });
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
+    if (token || user) {
+      pendingAuthData = { token, user };
+      if (mainWindow) {
+        mainWindow.webContents.send("auth:deep-link", { token, user });
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
     }
   } catch (err) {
     console.error("Deep link parse error:", err);
@@ -286,7 +301,9 @@ if (!gotSingleInstanceLock) {
       mainWindow.show();
       mainWindow.focus();
     }
-    const deepLink = commandLine.find((arg) => arg.startsWith("oryxgen://"));
+    const deepLink = commandLine
+      .map((arg) => (typeof arg === "string" ? arg.trim().replace(/^"|"$/g, "") : ""))
+      .find((arg) => arg.toLowerCase().startsWith("oryxgen://"));
     if (deepLink) {
       handleDeepLinkUrl(deepLink);
     }
