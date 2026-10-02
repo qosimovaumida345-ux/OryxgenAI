@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, shell, globalShortcut }
 const path = require("path");
 const fs = require("fs");
 const { execSync, spawn } = require("child_process");
+const http = require("http");
 
 // Register custom protocol: oryxgen://
 if (process.defaultApp) {
@@ -262,6 +263,80 @@ ipcMain.handle("app:open-external", async (e, url) => {
 });
 
 let pendingAuthData = null;
+let authServer = null;
+let authServerPort = 53281;
+
+function startAuthServer() {
+  if (authServer) return authServerPort;
+  try {
+    authServer = http.createServer((req, res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+
+      try {
+        const parsedUrl = new URL(req.url, `http://127.0.0.1:${authServerPort}`);
+        if (parsedUrl.pathname === "/auth_callback" || parsedUrl.pathname === "/callback") {
+          const token = parsedUrl.searchParams.get("token") || "";
+          const userRaw = parsedUrl.searchParams.get("user") || "";
+          let user = null;
+          if (userRaw) {
+            try {
+              user = JSON.parse(decodeURIComponent(userRaw));
+            } catch {
+              try { user = JSON.parse(userRaw); } catch {}
+            }
+          }
+          if (token || user) {
+            pendingAuthData = { token, user };
+            if (mainWindow) {
+              mainWindow.webContents.send("auth:deep-link", { token, user });
+              if (mainWindow.isMinimized()) mainWindow.restore();
+              mainWindow.show();
+              mainWindow.focus();
+            }
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, status: "authenticated" }));
+          return;
+        }
+      } catch (e) {
+        console.error("Auth server request error:", e);
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+
+    authServer.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        try {
+          authServer.listen(0, "127.0.0.1", () => {
+            authServerPort = authServer.address().port;
+            console.log(`[Auth Loopback Server] Running on http://127.0.0.1:${authServerPort}`);
+          });
+        } catch {}
+      }
+    });
+
+    authServer.listen(authServerPort, "127.0.0.1", () => {
+      console.log(`[Auth Loopback Server] Running on http://127.0.0.1:${authServerPort}`);
+    });
+  } catch (err) {
+    console.error("Failed to start auth server:", err);
+  }
+  return authServerPort;
+}
+
+ipcMain.handle("auth:get_auth_port", () => {
+  return authServerPort || startAuthServer();
+});
 
 ipcMain.handle("auth:get_pending_deep_link", () => {
   const data = pendingAuthData;
@@ -332,7 +407,10 @@ app.on("open-url", (event, url) => {
 });
 
 // App Lifecycle
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  startAuthServer();
+  createWindow();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

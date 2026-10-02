@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld("oryxgenDesktop", {
   computerCall: (action, args) => ipcRenderer.invoke("computer:call", action, args),
 
   // High-level Computer Use helpers
-  takeScreenshot: (scale = 1.0, region = null) => ipcRenderer.invoke("computer:call", "screenshot", { scale, region }),
+  takeScreenshot: (scale = 0.8, region = null) => ipcRenderer.invoke("computer:call", "screenshot", { scale, region, base64: true }),
   ocrScreen: (region = null, language = "") => ipcRenderer.invoke("computer:call", "ocr", { region, language }),
   findImage: (templatePath, threshold = 0.8, region = null) => ipcRenderer.invoke("computer:call", "find_image", { template_path: templatePath, threshold, region }),
   getPixelColor: (x, y) => ipcRenderer.invoke("computer:call", "get_pixel_color", { x, y }),
@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld("oryxgenDesktop", {
 
   // External Browser & Deep Link Auth
   openExternal: (url) => ipcRenderer.invoke("app:open-external", url),
+  getAuthPort: () => ipcRenderer.invoke("auth:get_auth_port"),
   getPendingAuthDeepLink: () => ipcRenderer.invoke("auth:get_pending_deep_link"),
   onAuthDeepLink: (callback) => {
     const handler = (event, data) => callback(data);

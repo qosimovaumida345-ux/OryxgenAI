@@ -171,11 +171,35 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
     }
   };
 
-  const handleDesktopGoogleLogin = () => {
+  const [forceWebTabs, setForceWebTabs] = useState(false);
+
+  useEffect(() => {
+    const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
+    if (!desktopApi?.onAuthDeepLink) return;
+    const unsub = desktopApi.onAuthDeepLink((data) => {
+      if (data?.user) {
+        setWaitingDesktopAuth(false);
+        onAuthSuccess(data.user);
+        if (onClose) onClose();
+      }
+    });
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, [onAuthSuccess, onClose]);
+
+  const handleDesktopGoogleLogin = async () => {
     setError("");
     setWaitingDesktopAuth(true);
-    const desktopApi = window.oryxgenDesktop || window.electronAPI;
-    const targetUrl = "https://avg-ai-creator.site/app?auth_desktop=1";
+    const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
+    let authPort = 53281;
+    if (desktopApi?.getAuthPort) {
+      try {
+        const p = await desktopApi.getAuthPort();
+        if (p) authPort = p;
+      } catch {}
+    }
+    const targetUrl = `https://avg-ai-creator.site/app?auth_desktop=1&port=${authPort}`;
     if (desktopApi?.openExternal) {
       desktopApi.openExternal(targetUrl);
     } else {
@@ -222,23 +246,33 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
         {error && <div className="auth-error-box">{error}</div>}
         {successInfo && <div className="auth-success-box">{successInfo}</div>}
 
-        {isDesktop ? (
+        {isDesktop && !forceWebTabs ? (
           /* Desktop App Specific Login: Single Google Sign-In or API Key */
           waitingDesktopAuth ? (
             <div className="auth-waiting-box">
               <div className="auth-spinner" />
               <h4>Brauzerda sayt ochildi...</h4>
               <p>
-                Brauzeringizda rasmiy sayt ochildi. U yerda tizimga kiring va sahifa tepasidagi{" "}
-                <strong>"Desktop ilovada ochish"</strong> tugmasini bosing.
+                Brauzeringizda rasmiy sayt ochildi. U yerda Google hisobingiz bilan tizimga kiring.
+                Tizimga kirishingiz bilan desktop ilovasi avtomatik ulanadi.
               </p>
-              <button
-                type="button"
-                className="auth-cancel-waiting-btn"
-                onClick={() => setWaitingDesktopAuth(false)}
-              >
-                Ortga qaytish
-              </button>
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  className="auth-cancel-waiting-btn"
+                  onClick={() => setWaitingDesktopAuth(false)}
+                >
+                  Ortga qaytish
+                </button>
+                <button
+                  type="button"
+                  className="auth-cancel-waiting-btn"
+                  style={{ background: "rgba(255,255,255,0.08)" }}
+                  onClick={handleDesktopGoogleLogin}
+                >
+                  Qayta ochish
+                </button>
+              </div>
             </div>
           ) : (
             <div className="auth-body-simple">
@@ -280,6 +314,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
                   <span className="apikey-hint">API Key orqali unga tegishli akkaunt nomidan to'g'ridan-to'g'ri kiriladi.</span>
                 </div>
               </form>
+
+              <div style={{ marginTop: "16px", textAlign: "center" }}>
+                <button
+                  type="button"
+                  className="auth-switch-method-btn"
+                  style={{ background: "none", border: "none", color: "var(--accent-color, #60a5fa)", cursor: "pointer", fontSize: "12px", textDecoration: "underline" }}
+                  onClick={() => setForceWebTabs(true)}
+                >
+                  Email / Kod orqali kirish (Ichki oyna)
+                </button>
+              </div>
             </div>
           )
         ) : (

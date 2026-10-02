@@ -294,11 +294,33 @@ CRITICAL IDENTITY INSTRUCTIONS:
     ...preparedMessages,
     ...messages
       .filter((m) => m && (m.role === "user" || m.role === "assistant" || m.role === "system"))
-      .map((m) => ({ role: m.role, content: String(m.content || "").slice(0, 32000) }))
+      .map((m) => {
+        if (m.image || Array.isArray(m.content)) {
+          if (Array.isArray(m.content)) {
+            return { role: m.role, content: m.content };
+          }
+          const textContent = String(m.content || "").slice(0, 32000);
+          const parts = [];
+          if (textContent) {
+            parts.push({ type: "text", text: textContent });
+          }
+          if (typeof m.image === "string" && (m.image.startsWith("data:") || m.image.startsWith("http"))) {
+            parts.push({
+              type: "image_url",
+              image_url: { url: m.image },
+            });
+          }
+          return { role: m.role, content: parts.length > 0 ? parts : textContent };
+        }
+        return { role: m.role, content: String(m.content || "").slice(0, 32000) };
+      })
       .slice(-24),
   ];
 
-  const lastUserMsg = safeMessages.filter((m) => m.role === "user").pop()?.content || "";
+  const lastUserMsgObj = safeMessages.filter((m) => m.role === "user").pop();
+  const lastUserMsg = Array.isArray(lastUserMsgObj?.content)
+    ? (lastUserMsgObj.content.find((p) => p.type === "text")?.text || "")
+    : (lastUserMsgObj?.content || "");
 
   if (!OR_KEY) {
     return streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);

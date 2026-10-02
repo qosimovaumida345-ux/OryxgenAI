@@ -238,6 +238,9 @@ function renderMarkdown(text) {
   // Horizontal divider
   html = html.replace(/^(?:---|___|\*\*\*)$/gm, '<hr class="md-hr">');
 
+  // Images: ![alt](url)
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="chat-md-image-box"><img src="$2" alt="$1" class="chat-md-img" loading="lazy" /></div>');
+
   // Links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="md-link">$1</a>');
 
@@ -336,6 +339,17 @@ function extractThinkingAndContent(content = "", existingThinking = "") {
   return { thinking, content: cleanContent };
 }
 
+function parseAttributes(attrString) {
+  const attrs = {};
+  if (!attrString) return attrs;
+  const re = /([a-zA-Z_0-9]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+  let m;
+  while ((m = re.exec(attrString)) !== null) {
+    attrs[m[1]] = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
+  }
+  return attrs;
+}
+
 // ── Native Desktop Tool Execution Engine (ChatGPT & Claude Desktop Architecture) ──
 async function executeDesktopToolCalls(rawContent, desktopApi) {
   if (!desktopApi || typeof rawContent !== "string") {
@@ -353,165 +367,208 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
 
   const defaultDesktop = desktopApi.desktopPath || "C:\\Users\\user\\Desktop";
 
-  // 1. List Dir Tool
-  const listDirRegex = /<(?:tool_call>\s*)?<list_dir\s+path="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  // Unwrap any outer <tool_call>...</tool_call> tags
+  const unwrapped = rawContent.replace(/<\/?tool_call>/gi, "");
+
+  // Universal tool tag matcher: matches <action attr1="val1" ... /> or <action ...>body</action>
+  const toolTagRegex = /<([a-z_]+)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
   let match;
-  while ((match = listDirRegex.exec(rawContent)) !== null) {
-    let targetPath = match[1].trim();
-    if (targetPath.toLowerCase() === "desktop" || targetPath.toLowerCase() === "~/desktop") {
-      targetPath = defaultDesktop;
-    }
-    try {
-      const res = await desktopApi.listDir(targetPath);
-      if (res && res.success && Array.isArray(res.items)) {
-        const folders = res.items.filter((i) => i.isDirectory).map((i) => i.name);
-        const files = res.items.filter((i) => !i.isDirectory).map((i) => i.name);
-        const summary = `Manzil: "${targetPath}"\nJami: ${res.items.length} ta element (${folders.length} ta papka, ${files.length} ta fayl)\n\nPapkalar (${folders.length} ta):\n${folders.map((f) => `• 📁 ${f}`).join("\n") || "(Papkalar yo'q)"}\n\nFayllar (${files.length} ta):\n${files.map((f) => `• 📄 ${f}`).join("\n") || "(Fayllar yo'q)"}`;
 
-        toolResultStrings.push(`[TOOL RESULT: list_dir("${targetPath}")]:\n${summary}`);
-        updatedContent += `\n\n\`\`\`text\n📁 [Katalog Tekshirildi: ${targetPath}]\n${summary}\n\`\`\``;
-        shouldFollowup = true;
-      } else {
-        const errMsg = res?.error || "Papka topilmadi";
-        toolResultStrings.push(`[TOOL ERROR: list_dir("${targetPath}")]: ${errMsg}`);
-        updatedContent += `\n\n❌ [Katalog Xatosi]: ${errMsg}`;
+  while ((match = toolTagRegex.exec(unwrapped)) !== null) {
+    const rawTag = match[0];
+    const action = match[1].toLowerCase();
+    const attrs = parseAttributes(match[2]);
+    const body = (match[3] || "").trim();
+
+    // 1. list_dir
+    if (action === "list_dir") {
+      let targetPath = (attrs.path || body || defaultDesktop).trim();
+      if (targetPath.toLowerCase() === "desktop" || targetPath.toLowerCase() === "~/desktop") {
+        targetPath = defaultDesktop;
       }
-    } catch (err) {
-      toolResultStrings.push(`[TOOL EXCEPTION: list_dir]: ${err.message}`);
-      updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
-    }
-  }
-
-  // 2. Run Command Tool
-  const runCmdRegex = /<(?:tool_call>\s*)?<run_command\s+command="([^"]+)"(?: \s*cwd="([^"]+)")?\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  while ((match = runCmdRegex.exec(rawContent)) !== null) {
-    const command = match[1].trim();
-    const cwd = match[2]?.trim() || defaultDesktop;
-    try {
-      const res = await desktopApi.runCommand(command, cwd);
-      const out = (res?.output || res?.stdout || res?.error || (res?.success ? "Bajarildi" : "Xatolik")).trim();
-      toolResultStrings.push(`[TOOL RESULT: run_command("${command}")]:\n${out}`);
-      updatedContent += `\n\n\`\`\`powershell\n⚡ [Terminal Buyrug'i: ${command}]\n${out}\n\`\`\``;
-      shouldFollowup = true;
-    } catch (err) {
-      toolResultStrings.push(`[TOOL ERROR: run_command("${command}")]: ${err.message}`);
-      updatedContent += `\n\n❌ [Terminal Xatosi]: ${err.message}`;
-    }
-  }
-
-  // 3. Read File Tool
-  const readFileRegex = /<(?:tool_call>\s*)?<read_file\s+path="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  while ((match = readFileRegex.exec(rawContent)) !== null) {
-    const filePath = match[1].trim();
-    try {
-      const res = await desktopApi.readFile(filePath);
-      if (res && res.success) {
-        toolResultStrings.push(`[TOOL RESULT: read_file("${filePath}")]:\n${res.content}`);
-        updatedContent += `\n\n\`\`\`text\n📄 [Fayl O'qildi: ${filePath}]\n${res.content.slice(0, 2000)}${res.content.length > 2000 ? "\n...(qisqartirildi)..." : ""}\n\`\`\``;
-        shouldFollowup = true;
-      } else {
-        const errMsg = res?.error || "Fayl topilmadi";
-        toolResultStrings.push(`[TOOL ERROR: read_file("${filePath}")]: ${errMsg}`);
-        updatedContent += `\n\n❌ [Fayl Xatosi]: ${errMsg}`;
-      }
-    } catch (err) {
-      toolResultStrings.push(`[TOOL EXCEPTION: read_file]: ${err.message}`);
-      updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
-    }
-  }
-
-  // 4. Write File Tool
-  const writeFileRegex = /<(?:tool_call>\s*)?<write_file\s+path="([^"]+)">([\s\S]*?)<\/write_file>(?:\s*<\/tool_call>)?/gi;
-  while ((match = writeFileRegex.exec(rawContent)) !== null) {
-    const filePath = match[1].trim();
-    const content = match[2];
-    try {
-      const res = await desktopApi.writeFile(filePath, content);
-      if (res && res.success) {
-        toolResultStrings.push(`[TOOL RESULT: write_file("${filePath}")]: Successfully saved ${content.length} bytes.`);
-        updatedContent += `\n\n✅ [Fayl Saqlandi]: \`${filePath}\` (${content.length} bayt)`;
-        shouldFollowup = true;
-      } else {
-        const errMsg = res?.error || "Fayl saqlanmadi";
-        toolResultStrings.push(`[TOOL ERROR: write_file("${filePath}")]: ${errMsg}`);
-        updatedContent += `\n\n❌ [Fayl Saqlash Xatosi]: ${errMsg}`;
-      }
-    } catch (err) {
-      toolResultStrings.push(`[TOOL EXCEPTION: write_file]: ${err.message}`);
-      updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
-    }
-  }
-
-  // 5. Launch App Tool
-  const launchAppRegex = /<(?:tool_call>\s*)?<launch_app\s+command="([^"]+)"(?: \s*args="([^"]+)")?\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  while ((match = launchAppRegex.exec(rawContent)) !== null) {
-    const command = match[1].trim();
-    const args = match[2]?.trim() || "";
-    try {
-      const res = await desktopApi.launchApp(command, args);
-      toolResultStrings.push(`[TOOL RESULT: launch_app("${command}")]: Launched successfully.`);
-      updatedContent += `\n\n🚀 [Ilova Ishga Tushirildi]: \`${command} ${args}\``.trim();
-      shouldFollowup = true;
-    } catch (err) {
-      toolResultStrings.push(`[TOOL ERROR: launch_app("${command}")]: ${err.message}`);
-      updatedContent += `\n\n❌ [Ilova Xatosi]: ${err.message}`;
-    }
-  }
-
-  // 6. Screenshot Tool
-  const shotRegex = /<(?:tool_call>\s*)?<take_screenshot\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  if (shotRegex.test(rawContent)) {
-    try {
-      const res = await desktopApi.takeScreenshot(0.8);
-      if (res && res.success) {
-        toolResultStrings.push(`[TOOL RESULT: take_screenshot]: Screenshot saved at ${res.path} (${res.width}x${res.height}).`);
-        updatedContent += `\n\n📸 **[Ekran Skrinshoti Olindi]**: (${res.width}x${res.height})\n![Ekran](file://${res.path})`;
+      try {
+        const res = await desktopApi.listDir(targetPath);
+        if (res && res.success && Array.isArray(res.items)) {
+          const folders = res.items.filter((i) => i.isDirectory).map((i) => i.name);
+          const files = res.items.filter((i) => !i.isDirectory).map((i) => i.name);
+          const summary = `Manzil: "${targetPath}"\nJami: ${res.items.length} ta element (${folders.length} ta papka, ${files.length} ta fayl)\n\nPapkalar (${folders.length} ta):\n${folders.map((f) => `• 📁 ${f}`).join("\n") || "(Papkalar yo'q)"}\n\nFayllar (${files.length} ta):\n${files.map((f) => `• 📄 ${f}`).join("\n") || "(Fayllar yo'q)"}`;
+          toolResultStrings.push(`[TOOL RESULT: list_dir("${targetPath}")]:\n${summary}`);
+          updatedContent += `\n\n\`\`\`text\n📁 [Katalog Tekshirildi: ${targetPath}]\n${summary}\n\`\`\``;
+          shouldFollowup = true;
+        } else {
+          const errMsg = res?.error || "Papka topilmadi";
+          toolResultStrings.push(`[TOOL ERROR: list_dir("${targetPath}")]: ${errMsg}`);
+          updatedContent += `\n\n❌ [Katalog Xatosi]: ${errMsg}`;
+          shouldFollowup = true;
+        }
+      } catch (err) {
+        toolResultStrings.push(`[TOOL EXCEPTION: list_dir]: ${err.message}`);
+        updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
         shouldFollowup = true;
       }
-    } catch (err) {
-      toolResultStrings.push(`[TOOL ERROR: take_screenshot]: ${err.message}`);
     }
-  }
 
-  // 7. Focus Window
-  const focusRegex = /<(?:tool_call>\s*)?<focus_window\s+query="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  while ((match = focusRegex.exec(rawContent)) !== null) {
-    const query = match[1].trim();
-    try {
-      await desktopApi.focusWindow(query);
-      toolResultStrings.push(`[TOOL RESULT: focus_window("${query}")]: Focused.`);
-      updatedContent += `\n\n🪟 [Oyna Tanlandi]: "${query}"`;
-    } catch (err) {
-      toolResultStrings.push(`[TOOL ERROR: focus_window]: ${err.message}`);
+    // 2. run_command
+    else if (action === "run_command" || action === "terminal_run") {
+      const command = (attrs.command || body || "").trim();
+      const cwd = (attrs.cwd || defaultDesktop).trim();
+      if (command) {
+        try {
+          const res = await desktopApi.runCommand(command, cwd);
+          const out = (res?.output || res?.stdout || res?.error || (res?.success ? "Bajarildi" : "Xatolik")).trim();
+          toolResultStrings.push(`[TOOL RESULT: run_command("${command}")]:\n${out}`);
+          updatedContent += `\n\n\`\`\`powershell\n⚡ [Terminal Buyrug'i: ${command}]\n${out}\n\`\`\``;
+          shouldFollowup = true;
+        } catch (err) {
+          toolResultStrings.push(`[TOOL ERROR: run_command("${command}")]: ${err.message}`);
+          updatedContent += `\n\n❌ [Terminal Xatosi]: ${err.message}`;
+          shouldFollowup = true;
+        }
+      }
     }
-  }
 
-  // 8. Mouse Click
-  const clickRegex = /<(?:tool_call>\s*)?<mouse_click\s+x="(\d+)"\s+y="(\d+)"(?: \s*button="([^"]+)")?(?: \s*clicks="(\d+)")?\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  while ((match = clickRegex.exec(rawContent)) !== null) {
-    const x = parseInt(match[1], 10);
-    const y = parseInt(match[2], 10);
-    const button = match[3] || "left";
-    const clicks = parseInt(match[4] || "1", 10);
-    try {
-      await desktopApi.mouseClick(x, y, button, clicks);
-      toolResultStrings.push(`[TOOL RESULT: mouse_click]: Clicked at (${x}, ${y}) with ${button}.`);
-      updatedContent += `\n\n🖱️ [Sichqoncha Bosildi]: (${x}, ${y}) [${button}]`;
-    } catch (err) {
-      toolResultStrings.push(`[TOOL ERROR: mouse_click]: ${err.message}`);
+    // 3. read_file
+    else if (action === "read_file") {
+      const filePath = (attrs.path || body || "").trim();
+      if (filePath) {
+        try {
+          const res = await desktopApi.readFile(filePath);
+          if (res && res.success) {
+            toolResultStrings.push(`[TOOL RESULT: read_file("${filePath}")]:\n${res.content}`);
+            updatedContent += `\n\n\`\`\`text\n📄 [Fayl O'qildi: ${filePath}]\n${res.content.slice(0, 2000)}${res.content.length > 2000 ? "\n...(qisqartirildi)..." : ""}\n\`\`\``;
+            shouldFollowup = true;
+          } else {
+            const errMsg = res?.error || "Fayl topilmadi";
+            toolResultStrings.push(`[TOOL ERROR: read_file("${filePath}")]: ${errMsg}`);
+            updatedContent += `\n\n❌ [Fayl Xatosi]: ${errMsg}`;
+            shouldFollowup = true;
+          }
+        } catch (err) {
+          toolResultStrings.push(`[TOOL EXCEPTION: read_file]: ${err.message}`);
+          updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
+          shouldFollowup = true;
+        }
+      }
     }
-  }
 
-  // 9. Keyboard Type
-  const typeRegex = /<(?:tool_call>\s*)?<keyboard_type\s+text="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
-  while ((match = typeRegex.exec(rawContent)) !== null) {
-    const text = match[1];
-    try {
-      await desktopApi.keyboardType(text);
-      toolResultStrings.push(`[TOOL RESULT: keyboard_type]: Typed "${text}".`);
-      updatedContent += `\n\n⌨️ [Matn Yozildi]: "${text}"`;
-    } catch (err) {
-      toolResultStrings.push(`[TOOL ERROR: keyboard_type]: ${err.message}`);
+    // 4. write_file
+    else if (action === "write_file") {
+      const filePath = (attrs.path || "").trim();
+      const content = body || attrs.content || "";
+      if (filePath) {
+        try {
+          const res = await desktopApi.writeFile(filePath, content);
+          if (res && res.success) {
+            toolResultStrings.push(`[TOOL RESULT: write_file("${filePath}")]: Successfully saved ${content.length} bytes.`);
+            updatedContent += `\n\n✅ [Fayl Saqlandi]: \`${filePath}\` (${content.length} bayt)`;
+            shouldFollowup = true;
+          } else {
+            const errMsg = res?.error || "Fayl saqlanmadi";
+            toolResultStrings.push(`[TOOL ERROR: write_file("${filePath}")]: ${errMsg}`);
+            updatedContent += `\n\n❌ [Fayl Saqlash Xatosi]: ${errMsg}`;
+            shouldFollowup = true;
+          }
+        } catch (err) {
+          toolResultStrings.push(`[TOOL EXCEPTION: write_file]: ${err.message}`);
+          updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
+          shouldFollowup = true;
+        }
+      }
+    }
+
+    // 5. launch_app
+    else if (action === "launch_app") {
+      const command = (attrs.command || body || "").trim();
+      const args = (attrs.args || "").trim();
+      if (command) {
+        try {
+          const res = await desktopApi.launchApp(command, args);
+          toolResultStrings.push(`[TOOL RESULT: launch_app("${command}")]: Launched successfully.`);
+          updatedContent += `\n\n🚀 [Ilova Ishga Tushirildi]: \`${command} ${args}\``.trim();
+          shouldFollowup = true;
+        } catch (err) {
+          toolResultStrings.push(`[TOOL ERROR: launch_app("${command}")]: ${err.message}`);
+          updatedContent += `\n\n❌ [Ilova Xatosi]: ${err.message}`;
+          shouldFollowup = true;
+        }
+      }
+    }
+
+    // 6. take_screenshot
+    else if (action === "take_screenshot" || action === "screenshot") {
+      try {
+        const res = await desktopApi.takeScreenshot(0.8, null, true);
+        if (res && res.success) {
+          const imgUrl = res.data_url || (res.base64 ? `data:image/png;base64,${res.base64}` : "");
+          toolResultStrings.push(`[TOOL RESULT: take_screenshot]: Screenshot captured successfully (${res.width}x${res.height}) at ${res.path}.`);
+          if (imgUrl) {
+            updatedContent += `\n\n📸 **[Ekran Skrinshoti Olindi]**: (${res.width}x${res.height})\n![Ekran](${imgUrl})`;
+          } else {
+            updatedContent += `\n\n📸 **[Ekran Skrinshoti Olindi]**: (${res.width}x${res.height}) [${res.path}]`;
+          }
+          shouldFollowup = true;
+        }
+      } catch (err) {
+        toolResultStrings.push(`[TOOL ERROR: take_screenshot]: ${err.message}`);
+      }
+    }
+
+    // 7. focus_window
+    else if (action === "focus_window") {
+      const query = (attrs.query || body || "").trim();
+      if (query) {
+        try {
+          await desktopApi.focusWindow(query);
+          toolResultStrings.push(`[TOOL RESULT: focus_window("${query}")]: Focused.`);
+          updatedContent += `\n\n🪟 [Oyna Tanlandi]: "${query}"`;
+          shouldFollowup = true;
+        } catch (err) {
+          toolResultStrings.push(`[TOOL ERROR: focus_window]: ${err.message}`);
+        }
+      }
+    }
+
+    // 8. mouse_click
+    else if (action === "mouse_click") {
+      const x = parseInt(attrs.x || "0", 10);
+      const y = parseInt(attrs.y || "0", 10);
+      const button = attrs.button || "left";
+      const clicks = parseInt(attrs.clicks || "1", 10);
+      try {
+        await desktopApi.mouseClick(x, y, button, clicks);
+        toolResultStrings.push(`[TOOL RESULT: mouse_click]: Clicked at (${x}, ${y}) with ${button}.`);
+        updatedContent += `\n\n🖱️ [Sichqoncha Bosildi]: (${x}, ${y}) [${button}]`;
+        shouldFollowup = true;
+      } catch (err) {
+        toolResultStrings.push(`[TOOL ERROR: mouse_click]: ${err.message}`);
+      }
+    }
+
+    // 9. keyboard_type
+    else if (action === "keyboard_type") {
+      const text = attrs.text || body || "";
+      try {
+        await desktopApi.keyboardType(text);
+        toolResultStrings.push(`[TOOL RESULT: keyboard_type]: Typed "${text}".`);
+        updatedContent += `\n\n⌨️ [Matn Yozildi]: "${text}"`;
+        shouldFollowup = true;
+      } catch (err) {
+        toolResultStrings.push(`[TOOL ERROR: keyboard_type]: ${err.message}`);
+      }
+    }
+
+    // 10. kill_process
+    else if (action === "kill_process") {
+      const pid = attrs.pid ? parseInt(attrs.pid, 10) : null;
+      const name = attrs.name || body || null;
+      try {
+        const res = await desktopApi.killProcess(pid, name);
+        toolResultStrings.push(`[TOOL RESULT: kill_process]: ${res?.success ? "Terminated" : res?.error}`);
+        updatedContent += `\n\n🛑 [Jarayon To'xtatildi]: ${name || pid}`;
+        shouldFollowup = true;
+      } catch (err) {
+        toolResultStrings.push(`[TOOL ERROR: kill_process]: ${err.message}`);
+      }
     }
   }
 
@@ -569,14 +626,16 @@ export default function Chat() {
   const [mcpCopied, setMcpCopied] = useState(false);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
-  const [attachedScreenshot, setAttachedScreenshot] = useState(null);
+  const [attachedImage, setAttachedImage] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null);
+  const fileInputRef = useRef(null);
 
   const handleCaptureScreenVision = async () => {
     const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
     if (!desktopApi) return;
     try {
       if (desktopApi.startGlow) desktopApi.startGlow(1.5);
-      const res = await desktopApi.takeScreenshot(0.8);
+      const res = await desktopApi.takeScreenshot(0.8, null, true);
       if (res && res.success) {
         let ocrText = "";
         try {
@@ -584,15 +643,59 @@ export default function Chat() {
           if (ocrRes && ocrRes.text) ocrText = ocrRes.text;
         } catch { }
 
-        setAttachedScreenshot({
+        const imgDataUrl = res.data_url || (res.base64 ? `data:image/png;base64,${res.base64}` : "");
+        setAttachedImage({
+          dataUrl: imgDataUrl,
           path: res.path,
           width: res.width,
           height: res.height,
           ocrText,
+          name: "Ekran Skrinshoti",
+          isScreenVision: true,
         });
       }
     } catch (err) {
       console.error("Screen vision capture error:", err);
+    }
+  };
+
+  const handleImageFileSelect = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setAttachedImage({
+        dataUrl: event.target.result,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            setAttachedImage({
+              dataUrl: event.target.result,
+              name: file.name || "Clipboard Screenshot",
+              size: file.size,
+              type: file.type,
+            });
+          };
+          reader.readAsDataURL(file);
+          e.preventDefault();
+          break;
+        }
+      }
     }
   };
 
@@ -606,11 +709,50 @@ export default function Chat() {
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
   const [showDesktopAuthBanner, setShowDesktopAuthBanner] = useState(() => {
     try {
-      return typeof window !== "undefined" && new URLSearchParams(window.location.search).has("auth_desktop");
+      if (typeof window === "undefined") return false;
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("auth_desktop")) {
+        sessionStorage.setItem("auth_desktop_pending", "1");
+        if (params.get("port")) sessionStorage.setItem("auth_desktop_port", params.get("port"));
+        return true;
+      }
+      return !!sessionStorage.getItem("auth_desktop_pending");
     } catch {
       return false;
     }
   });
+
+  const sendAuthToDesktop = async (user, token) => {
+    if (!user) return;
+    const targetToken = token || getAuthToken() || "auth_success";
+    const userJson = encodeURIComponent(JSON.stringify(user));
+    let port = "53281";
+    try {
+      port = sessionStorage.getItem("auth_desktop_port") || new URLSearchParams(window.location.search).get("port") || "53281";
+    } catch {}
+
+    // 1. Loopback HTTP fetch (Instant & guaranteed)
+    try {
+      await fetch(`http://127.0.0.1:${port}/auth_callback?token=${encodeURIComponent(targetToken)}&user=${userJson}`, {
+        method: "GET",
+        mode: "no-cors",
+      });
+    } catch {}
+
+    // 2. Custom protocol launch
+    const deepLinkUrl = `oryxgen://auth?token=${encodeURIComponent(targetToken)}&user=${userJson}`;
+    try {
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = deepLinkUrl;
+      document.body.appendChild(iframe);
+      setTimeout(() => iframe.remove(), 2500);
+    } catch {}
+
+    try {
+      window.location.href = deepLinkUrl;
+    } catch {}
+  };
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -687,17 +829,39 @@ export default function Chat() {
     let mounted = true;
     async function init() {
       const searchParams = new URLSearchParams(window.location.search);
+      let isDesktopPending = false;
+      try {
+        if (searchParams.has("auth_desktop")) {
+          sessionStorage.setItem("auth_desktop_pending", "1");
+          if (searchParams.get("port")) {
+            sessionStorage.setItem("auth_desktop_port", searchParams.get("port"));
+          }
+          isDesktopPending = true;
+        } else if (sessionStorage.getItem("auth_desktop_pending")) {
+          isDesktopPending = true;
+        }
+      } catch {}
+
       const googleCode = searchParams.get("code");
       if (googleCode) {
         try {
           const authRes = await exchangeGoogleCode(googleCode, `${window.location.origin}/app`);
           if (authRes.user && mounted) {
             setCurrentUser(authRes.user);
+            if (isDesktopPending) {
+              sendAuthToDesktop(authRes.user, authRes.token);
+            }
           }
         } catch (authErr) {
           console.warn("Google OAuth callback error:", authErr.message);
         } finally {
           window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } else if (isDesktopPending) {
+        if (currentUser) {
+          sendAuthToDesktop(currentUser, getAuthToken());
+        } else {
+          setIsAuthOpen(true);
         }
       }
 
@@ -841,26 +1005,26 @@ export default function Chat() {
 
   const handleSendMessage = async (customText = null) => {
     const rawInput = (customText || input).trim();
-    if (!rawInput || isStreaming) return;
+    if ((!rawInput && !attachedImage) || isStreaming) return;
 
     setInput("");
 
     // Detect if running in Desktop app
     const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
 
-    // Attach screenshot OCR context if user captured screen vision
-    let promptToSend = rawInput;
-    if (attachedScreenshot) {
-      promptToSend = `${rawInput}\n\n[📸 Biriktirilgan Ekran Skrinshoti: ${attachedScreenshot.path || "Ekran tasviri"}${attachedScreenshot.ocrText ? `\nEkrandan o'qilgan matn (OCR):\n${attachedScreenshot.ocrText}` : ""}]`;
-      setAttachedScreenshot(null);
+    let promptToSend = rawInput || (attachedImage ? "Ushbu tasvirni tahlil qiling va tushuntiring." : "");
+    const sentImage = attachedImage?.dataUrl || null;
+    if (attachedImage?.ocrText) {
+      promptToSend = `${promptToSend}\n\n[📸 Ekrandan o'qilgan matn (OCR):\n${attachedImage.ocrText}]`;
     }
+    setAttachedImage(null);
 
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `assistant-${Date.now()}`;
 
     const newMessages = [
       ...messages,
-      { id: userMsgId, role: "user", content: promptToSend, model: selectedModel },
+      { id: userMsgId, role: "user", content: promptToSend, image: sentImage, model: selectedModel },
     ];
     setMessages(newMessages);
 
@@ -980,7 +1144,7 @@ The system will run this tool, fetch the real items on their desktop, and give t
       await streamChat(
         {
           model: selectedModel,
-          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+          messages: newMessages.map((m) => ({ role: m.role, content: m.content, image: m.image })),
           systemPrompt: finalSystemPrompt,
           chatId: activeChatId,
         },
@@ -1009,7 +1173,7 @@ The system will run this tool, fetch the real items on their desktop, and give t
         async () => {
           // --- Autonomous Desktop Tool Execution ---
           if (desktopApi) {
-            const hasToolCalls = /<(?:tool_call>\s*)?(?:list_dir|run_command|read_file|write_file|launch_app|take_screenshot|focus_window|mouse_click|keyboard_type|kill_process)/i.test(assistantContent);
+            const hasToolCalls = /<(?:tool_call>\s*)?(?:list_dir|run_command|terminal_run|read_file|write_file|launch_app|take_screenshot|screenshot|focus_window|mouse_click|keyboard_type|kill_process)/i.test(assistantContent);
             if (hasToolCalls) {
               try {
                 const execution = await executeDesktopToolCalls(assistantContent, desktopApi);
@@ -1025,7 +1189,7 @@ The system will run this tool, fetch the real items on their desktop, and give t
 
                   // Follow-up call so the LLM synthesizes a clean, natural-language Uzbek response
                   const toolFollowUpMessages = [
-                    ...newMessages.map((m) => ({ role: m.role, content: m.content })),
+                    ...newMessages.map((m) => ({ role: m.role, content: m.content, image: m.image })),
                     { role: "assistant", content: assistantContent },
                     {
                       role: "user",
@@ -1305,22 +1469,7 @@ The system will run this tool, fetch the real items on their desktop, and give t
               type="button"
               className="desktop-auth-open-btn"
               onClick={() => {
-                const token = getAuthToken() || localStorage.getItem("oryxgen_auth_token") || localStorage.getItem("oryxgen_token") || "auth_success";
-                const userJson = encodeURIComponent(JSON.stringify(currentUser));
-                const deepLinkUrl = `oryxgen://auth?token=${encodeURIComponent(token)}&user=${userJson}`;
-
-                try {
-                  const iframe = document.createElement("iframe");
-                  iframe.style.display = "none";
-                  iframe.src = deepLinkUrl;
-                  document.body.appendChild(iframe);
-                  setTimeout(() => iframe.remove(), 2500);
-                } catch { }
-
-                window.location.href = deepLinkUrl;
-                setTimeout(() => {
-                  try { window.close(); } catch { }
-                }, 1500);
+                sendAuthToDesktop(currentUser);
               }}
             >
               Desktop Ilovada Ochish ↗
@@ -1715,6 +1864,16 @@ The system will run this tool, fetch the real items on their desktop, and give t
                           </div>
                         ) : (
                           <div className="message-content">
+                            {m.image && (
+                              <div className="message-image-attachment">
+                                <img
+                                  src={m.image}
+                                  alt="Biriktirilgan tasvir"
+                                  className="message-attached-img"
+                                  onClick={() => setZoomedImage(m.image)}
+                                />
+                              </div>
+                            )}
                             {msgContent.split("```").map((part, idx) => {
                               if (idx % 2 === 1) {
                                 const lines = part.split("\n");
@@ -1776,19 +1935,28 @@ The system will run this tool, fetch the real items on their desktop, and give t
 
           {/* Input Bar */}
           <div className="chat-input-bar">
-            {typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI) && attachedScreenshot && (
+            {attachedImage && (
               <div className="attached-screenshot-preview">
+                <div className="attached-screenshot-thumb-wrapper">
+                  {attachedImage.dataUrl ? (
+                    <img src={attachedImage.dataUrl} alt="Preview" className="attached-preview-thumb" />
+                  ) : (
+                    <span className="screenshot-icon">📸</span>
+                  )}
+                </div>
                 <div className="attached-screenshot-info">
-                  <span className="screenshot-icon">📸</span>
-                  <span className="screenshot-title">Ekran tasviri biriktirildi</span>
-                  {attachedScreenshot.ocrText && (
-                    <span className="ocr-badge">OCR: {attachedScreenshot.ocrText.slice(0, 35)}...</span>
+                  <span className="screenshot-title">{attachedImage.name || "Biriktirilgan Tasvir"}</span>
+                  {attachedImage.width && attachedImage.height && (
+                    <span className="screen-res-badge">{attachedImage.width}×{attachedImage.height}</span>
+                  )}
+                  {attachedImage.ocrText && (
+                    <span className="ocr-badge">OCR: {attachedImage.ocrText.slice(0, 35)}...</span>
                   )}
                 </div>
                 <button
                   type="button"
                   className="remove-screenshot-btn"
-                  onClick={() => setAttachedScreenshot(null)}
+                  onClick={() => setAttachedImage(null)}
                   title="O'chirish"
                 >
                   ✕
@@ -1808,12 +1976,34 @@ The system will run this tool, fetch the real items on their desktop, and give t
                   </svg>
                 </button>
 
+                {/* File picker for images */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleImageFileSelect}
+                  style={{ display: "none" }}
+                />
+                <button
+                  type="button"
+                  className={`action-screen-btn ${attachedImage && !attachedImage.isScreenVision ? "has-screen" : ""}`}
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Rasm biriktirish (PNG, JPG, WebP) yoki Ctrl+V bosing"
+                  aria-label="Rasm biriktirish"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                </button>
+
                 {typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI) && (
                   <button
                     type="button"
-                    className={`action-screen-btn ${attachedScreenshot ? "has-screen" : ""}`}
+                    className={`action-screen-btn ${attachedImage?.isScreenVision ? "has-screen" : ""}`}
                     onClick={handleCaptureScreenVision}
-                    title="Ekranni ko'rish va matnini tahlil qilish (ChatGPT Work with Apps)"
+                    title="Ekranni ko'rish va matnini tahlil qilish (Screen Vision)"
                     aria-label="Ekran tasvirini biriktirish"
                   >
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1881,13 +2071,14 @@ The system will run this tool, fetch the real items on their desktop, and give t
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 rows={1}
               />
               <button
                 type="button"
                 className="send-btn"
                 onClick={() => handleSendMessage()}
-                disabled={!input.trim() || isStreaming}
+                disabled={(!input.trim() && !attachedImage) || isStreaming}
                 aria-label="Yuborish"
               >
                 {isStreaming ? (
@@ -2136,6 +2327,16 @@ The system will run this tool, fetch the real items on their desktop, and give t
           setIsAuthOpen(false);
         }}
       />
+
+      {/* Image Lightbox Modal */}
+      {zoomedImage && (
+        <div className="image-zoom-overlay" onClick={() => setZoomedImage(null)}>
+          <div className="image-zoom-card" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="image-zoom-close" onClick={() => setZoomedImage(null)}>✕</button>
+            <img src={zoomedImage} alt="Kattalashtirilgan rasm" className="image-zoom-preview" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

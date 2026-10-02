@@ -215,7 +215,7 @@ def capture_screen(
     attach_interactive_desktop()
     trigger_glow(1.0)
 
-    if not output_path and not return_base64:
+    if not output_path:
         temp_dir = tempfile.gettempdir()
         timestamp = int(time.time() * 1000)
         output_path = os.path.join(temp_dir, f"oryxgen_screen_{timestamp}.png")
@@ -240,25 +240,20 @@ def capture_screen(
         nh = max(1, int(img.height * scale))
         img = img.resize((nw, nh), Image.Resampling.LANCZOS)
 
-    b64_str = ""
-    file_size = 0
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    img.save(output_path, format="PNG", optimize=True)
+    file_size = os.path.getsize(output_path)
 
-    if output_path:
-        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        img.save(output_path, format="PNG", optimize=True)
-        file_size = os.path.getsize(output_path)
-
-    if return_base64:
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
-        file_size = len(b64_str)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     res = get_screen_resolution()
     return {
         "success": True,
-        "path": output_path or "",
+        "path": output_path,
         "base64": b64_str,
+        "data_url": f"data:image/png;base64,{b64_str}",
         "width": img.width,
         "height": img.height,
         "file_size": file_size,
@@ -873,7 +868,7 @@ def main():
     try:
         # Vision & Screen
         if action == "screenshot":
-            res = capture_screen(args.get("output_path"), args.get("region"), args.get("monitor", 1), args.get("scale", 1.0), args.get("base64", False))
+            res = capture_screen(args.get("output_path"), args.get("region"), args.get("monitor", 1), args.get("scale", 0.8), True)
         elif action == "ocr":
             res = ocr_screen(args.get("region"), args.get("language", ""))
         elif action == "find_image":
