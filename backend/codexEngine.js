@@ -3,8 +3,36 @@ import { resolveBestCodeModel, getModelMaxTokens } from "./mapper.js";
 
 // Helper to call OpenRouter with failover across ranked models, unleashing each model's TRUE MAXIMUM capacity
 async function callOpenRouter(messages, openRouterKey, temperature = 0.2, requestedMaxTokens = null) {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    try {
+      console.log("[CodeX Engine] Generating full project with Groq LPU: openai/gpt-oss-120b");
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${groqKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-oss-120b",
+          messages,
+          temperature,
+          max_tokens: requestedMaxTokens || 65536,
+        }),
+      });
+
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        const text = data.choices?.[0]?.message?.content || "";
+        if (text && text.trim()) return text;
+      }
+    } catch (err) {
+      console.warn("[CodeX Engine] Groq attempt failed, falling back to OpenRouter:", err.message);
+    }
+  }
+
   if (!openRouterKey) {
-    throw new Error("OpenRouter API kaliti sozlanmagan.");
+    throw new Error("API kaliti sozlanmagan.");
   }
 
   const modelChain = await resolveBestCodeModel();
