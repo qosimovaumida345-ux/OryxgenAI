@@ -155,15 +155,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, closable = t
         return;
       }
 
-      // 2. Fallback direct authentication if backend has no Google Secret yet
-      const googleEmail = name ? `${name.toLowerCase().replace(/\s+/g, ".")}@gmail.com` : "user@gmail.com";
-      const res = await googleAuth(
-        googleEmail,
-        name || "Google User",
-        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || "Oryxgen")}`
-      );
-      onAuthSuccess(res.user);
-      if (onClose) onClose();
+      throw new Error("Google OAuth xizmati bilan bog'lanib bo'lmadi. Iltimos qayta urinib ko'ring.");
     } catch (err) {
       setError(err.message || "Google orqali kirishda xatolik yuz berdi");
     } finally {

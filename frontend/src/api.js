@@ -11,7 +11,12 @@ export function getAuthToken() {
 export function getStoredUser() {
   try {
     const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const u = raw ? JSON.parse(raw) : null;
+    if (u && (u.email === "testuser@gmail.com" || u.id === "user-test-1" || u.name === "Test User")) {
+      clearAuthSession();
+      return null;
+    }
+    return u;
   } catch {
     return null;
   }

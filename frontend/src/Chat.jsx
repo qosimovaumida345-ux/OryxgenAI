@@ -350,13 +350,104 @@ function parseAttributes(attrString) {
   return attrs;
 }
 
+// ── Strip raw XML tool tags, thinking blocks, and leaked terminal output from user-facing text ──
+export function cleanUserFacingText(text) {
+  if (!text || typeof text !== "string") return "";
+  let clean = text;
+
+  // 1. Remove think/thought tags
+  clean = clean.replace(/<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/gi, "");
+  clean = clean.replace(/<(?:think|thought)>[\s\S]*$/gi, "");
+
+  // 2. Remove outer <tool_call> tags
+  clean = clean.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "");
+  clean = clean.replace(/<tool_call>[\s\S]*$/gi, "");
+
+  // 3. Remove all known paired tool tags with bodies
+  const toolNames = "run_command|terminal_run|list_dir|read_file|write_file|launch_app|take_screenshot|screenshot|focus_window|mouse_click|keyboard_type|kill_process";
+  const pairedRe = new RegExp(`<(?:${toolNames})\\b[\\s\\S]*?<\\/(?:${toolNames})>`, "gi");
+  clean = clean.replace(pairedRe, "");
+
+  // 4. Remove all self-closing tool tags
+  const selfCloseRe = new RegExp(`<(?:${toolNames})\\b[^>]*\\/>`, "gi");
+  clean = clean.replace(selfCloseRe, "");
+
+  // 5. Remove unclosed / streaming tool tags
+  const unclosedRe = new RegExp(`<(?:${toolNames})\\b[\\s\\S]*$`, "gi");
+  clean = clean.replace(unclosedRe, "");
+
+  // 6. Remove orphaned tool attribute fragments like cwd="C:\" /> or command="..." />
+  clean = clean.replace(/\b(?:cwd|command|path)\s*=\s*"[^"]*"\s*(?:\/>|>)?/gi, "");
+  clean = clean.replace(/\b(?:cwd|command|path)\s*=\s*'[^']*'\s*(?:\/>|>)?/gi, "");
+  clean = clean.replace(/(?:cwd|command|path|args|text|pid|name)\s*=\s*"[^"]*"\s*\/>/gi, "");
+  clean = clean.replace(/(?:cwd|command|path|args|text|pid|name)\s*=\s*'[^']*'\s*\/>/gi, "");
+  clean = clean.replace(/\s*\/>\s*$/gi, "");
+
+  // 7. Remove any leaked terminal code blocks from past sessions
+  clean = clean.replace(/```(?:powershell|text|sh|cmd)?\s*⚡\s*\[Terminal Buyrug'i:[\s\S]*?```/gi, "");
+  clean = clean.replace(/```(?:text)?\s*📁\s*\[Katalog Tekshirildi:[\s\S]*?```/gi, "");
+
+  // 8. Remove empty codeblocks
+  clean = clean.replace(/```(?:xml|powershell|bash|sh)?\s*```/gi, "");
+
+  return clean.trim();
+}
+
+function extractDesktopToolCalls(text) {
+  if (!text || typeof text !== "string") return [];
+  const calls = [];
+  const toolNames = [
+    "run_command", "terminal_run", "list_dir", "read_file", "write_file",
+    "launch_app", "take_screenshot", "screenshot", "focus_window",
+    "mouse_click", "keyboard_type", "kill_process"
+  ];
+
+  // Unwrap outer code blocks if any
+  const unwrapped = text
+    .replace(/```(?:xml|powershell|bash|sh)?\s*(<(?:tool_call|run_command|list_dir|read_file|write_file|launch_app|take_screenshot|screenshot|focus_window|mouse_click|keyboard_type|kill_process)[\s\S]*?>[\s\S]*?)```/gi, "$1")
+    .replace(/<\/?tool_call>/gi, "");
+
+  // Paired tags: <run_command cwd="...">body</run_command>
+  const pairedRegex = /<([a-z_]+)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+  let match;
+  while ((match = pairedRegex.exec(unwrapped)) !== null) {
+    const action = match[1].toLowerCase();
+    if (toolNames.includes(action)) {
+      calls.push({
+        action,
+        attrs: parseAttributes(match[2]),
+        body: match[3].trim(),
+      });
+    }
+  }
+
+  // Self-closing tags: <list_dir path="..." /> or <run_command command="..." />
+  const selfCloseRegex = /<([a-z_]+)\b([^>]*?)\/>/gi;
+  while ((match = selfCloseRegex.exec(unwrapped)) !== null) {
+    const action = match[1].toLowerCase();
+    if (toolNames.includes(action)) {
+      calls.push({
+        action,
+        attrs: parseAttributes(match[2]),
+        body: "",
+      });
+    }
+  }
+
+  return calls;
+}
+
 // ── Native Desktop Tool Execution Engine (ChatGPT & Claude Desktop Architecture) ──
 async function executeDesktopToolCalls(rawContent, desktopApi) {
   if (!desktopApi || typeof rawContent !== "string") {
-    return { executedText: rawContent, toolResultText: "", shouldFollowup: false };
+    return { executedText: cleanUserFacingText(rawContent), toolResultText: "", shouldFollowup: false };
   }
 
-  let updatedContent = rawContent;
+  const toolCalls = extractDesktopToolCalls(rawContent);
+  if (!toolCalls.length) {
+    return { executedText: cleanUserFacingText(rawContent), toolResultText: "", shouldFollowup: false };
+  }
+
   let toolResultStrings = [];
   let shouldFollowup = false;
 
@@ -365,24 +456,14 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
     if (desktopApi.startGlow) desktopApi.startGlow(2.5);
   } catch { }
 
-  const defaultDesktop = desktopApi.desktopPath || "C:\\Users\\user\\Desktop";
+  const defaultDesktop = desktopApi.desktopPath || (desktopApi.userProfile ? `${desktopApi.userProfile}\\Desktop` : "C:\\Users\\user\\Desktop");
 
-  // Unwrap any outer <tool_call>...</tool_call> tags
-  const unwrapped = rawContent.replace(/<\/?tool_call>/gi, "");
-
-  // Universal tool tag matcher: matches <action attr1="val1" ... /> or <action ...>body</action>
-  const toolTagRegex = /<([a-z_]+)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-  let match;
-
-  while ((match = toolTagRegex.exec(unwrapped)) !== null) {
-    const rawTag = match[0];
-    const action = match[1].toLowerCase();
-    const attrs = parseAttributes(match[2]);
-    const body = (match[3] || "").trim();
+  for (const call of toolCalls) {
+    const { action, attrs, body } = call;
 
     // 1. list_dir
     if (action === "list_dir") {
-      let targetPath = (attrs.path || body || defaultDesktop).trim();
+      let targetPath = (attrs.path || body || defaultDesktop).trim().replace(/^["']|["']$/g, "");
       if (targetPath.toLowerCase() === "desktop" || targetPath.toLowerCase() === "~/desktop") {
         targetPath = defaultDesktop;
       }
@@ -391,37 +472,47 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
         if (res && res.success && Array.isArray(res.items)) {
           const folders = res.items.filter((i) => i.isDirectory).map((i) => i.name);
           const files = res.items.filter((i) => !i.isDirectory).map((i) => i.name);
-          const summary = `Manzil: "${targetPath}"\nJami: ${res.items.length} ta element (${folders.length} ta papka, ${files.length} ta fayl)\n\nPapkalar (${folders.length} ta):\n${folders.map((f) => `• 📁 ${f}`).join("\n") || "(Papkalar yo'q)"}\n\nFayllar (${files.length} ta):\n${files.map((f) => `• 📄 ${f}`).join("\n") || "(Fayllar yo'q)"}`;
+          const summary = `Papka manzili: "${targetPath}"\nJami: ${res.items.length} ta element (${folders.length} ta papka, ${files.length} ta fayl)\n\nPapkalar (${folders.length} ta):\n${folders.map((f) => `• 📁 ${f}`).join("\n") || "(Papkalar yo'q)"}\n\nFayllar (${files.length} ta):\n${files.map((f) => `• 📄 ${f}`).join("\n") || "(Fayllar yo'q)"}`;
           toolResultStrings.push(`[TOOL RESULT: list_dir("${targetPath}")]:\n${summary}`);
-          updatedContent += `\n\n\`\`\`text\n📁 [Katalog Tekshirildi: ${targetPath}]\n${summary}\n\`\`\``;
           shouldFollowup = true;
         } else {
           const errMsg = res?.error || "Papka topilmadi";
           toolResultStrings.push(`[TOOL ERROR: list_dir("${targetPath}")]: ${errMsg}`);
-          updatedContent += `\n\n❌ [Katalog Xatosi]: ${errMsg}`;
           shouldFollowup = true;
         }
       } catch (err) {
         toolResultStrings.push(`[TOOL EXCEPTION: list_dir]: ${err.message}`);
-        updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
         shouldFollowup = true;
       }
     }
 
     // 2. run_command
     else if (action === "run_command" || action === "terminal_run") {
-      const command = (attrs.command || body || "").trim();
-      const cwd = (attrs.cwd || defaultDesktop).trim();
+      let command = (attrs.command || body || "").trim();
+      let cwd = (attrs.cwd || defaultDesktop).trim().replace(/^["']|["']$/g, "");
+
+      if ((command.startsWith('"') && command.endsWith('"')) || (command.startsWith("'") && command.endsWith("'"))) {
+        command = command.slice(1, -1).trim();
+      }
+      if (command.startsWith("```")) {
+        command = command.replace(/^```[a-z0-9_-]*\n?/i, "").replace(/\n?```$/i, "").trim();
+      }
+      const psMatch = command.match(/^powershell(?:\.exe)?\s+(?:-NoProfile\s+)?(?:-Command\s+)?["']?([\s\S]*?)["']?$/i);
+      if (psMatch && psMatch[1] && psMatch[1].length > 2) {
+        command = psMatch[1].trim();
+      }
+      if (command.startsWith("\\") && !command.startsWith("\\\\")) {
+        command = command.slice(1).trim();
+      }
+
       if (command) {
         try {
           const res = await desktopApi.runCommand(command, cwd);
-          const out = (res?.output || res?.stdout || res?.error || (res?.success ? "Bajarildi" : "Xatolik")).trim();
+          const out = (res?.output || res?.stdout || res?.error || (res?.success ? "Bajarildi" : "Natija yo'q")).trim();
           toolResultStrings.push(`[TOOL RESULT: run_command("${command}")]:\n${out}`);
-          updatedContent += `\n\n\`\`\`powershell\n⚡ [Terminal Buyrug'i: ${command}]\n${out}\n\`\`\``;
           shouldFollowup = true;
         } catch (err) {
           toolResultStrings.push(`[TOOL ERROR: run_command("${command}")]: ${err.message}`);
-          updatedContent += `\n\n❌ [Terminal Xatosi]: ${err.message}`;
           shouldFollowup = true;
         }
       }
@@ -429,23 +520,20 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
 
     // 3. read_file
     else if (action === "read_file") {
-      const filePath = (attrs.path || body || "").trim();
+      const filePath = (attrs.path || body || "").trim().replace(/^["']|["']$/g, "");
       if (filePath) {
         try {
           const res = await desktopApi.readFile(filePath);
           if (res && res.success) {
             toolResultStrings.push(`[TOOL RESULT: read_file("${filePath}")]:\n${res.content}`);
-            updatedContent += `\n\n\`\`\`text\n📄 [Fayl O'qildi: ${filePath}]\n${res.content.slice(0, 2000)}${res.content.length > 2000 ? "\n...(qisqartirildi)..." : ""}\n\`\`\``;
             shouldFollowup = true;
           } else {
             const errMsg = res?.error || "Fayl topilmadi";
             toolResultStrings.push(`[TOOL ERROR: read_file("${filePath}")]: ${errMsg}`);
-            updatedContent += `\n\n❌ [Fayl Xatosi]: ${errMsg}`;
             shouldFollowup = true;
           }
         } catch (err) {
           toolResultStrings.push(`[TOOL EXCEPTION: read_file]: ${err.message}`);
-          updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
           shouldFollowup = true;
         }
       }
@@ -453,24 +541,21 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
 
     // 4. write_file
     else if (action === "write_file") {
-      const filePath = (attrs.path || "").trim();
+      const filePath = (attrs.path || "").trim().replace(/^["']|["']$/g, "");
       const content = body || attrs.content || "";
       if (filePath) {
         try {
           const res = await desktopApi.writeFile(filePath, content);
           if (res && res.success) {
             toolResultStrings.push(`[TOOL RESULT: write_file("${filePath}")]: Successfully saved ${content.length} bytes.`);
-            updatedContent += `\n\n✅ [Fayl Saqlandi]: \`${filePath}\` (${content.length} bayt)`;
             shouldFollowup = true;
           } else {
             const errMsg = res?.error || "Fayl saqlanmadi";
             toolResultStrings.push(`[TOOL ERROR: write_file("${filePath}")]: ${errMsg}`);
-            updatedContent += `\n\n❌ [Fayl Saqlash Xatosi]: ${errMsg}`;
             shouldFollowup = true;
           }
         } catch (err) {
           toolResultStrings.push(`[TOOL EXCEPTION: write_file]: ${err.message}`);
-          updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
           shouldFollowup = true;
         }
       }
@@ -478,17 +563,15 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
 
     // 5. launch_app
     else if (action === "launch_app") {
-      const command = (attrs.command || body || "").trim();
+      const command = (attrs.command || body || "").trim().replace(/^["']|["']$/g, "");
       const args = (attrs.args || "").trim();
       if (command) {
         try {
-          const res = await desktopApi.launchApp(command, args);
+          await desktopApi.launchApp(command, args);
           toolResultStrings.push(`[TOOL RESULT: launch_app("${command}")]: Launched successfully.`);
-          updatedContent += `\n\n🚀 [Ilova Ishga Tushirildi]: \`${command} ${args}\``.trim();
           shouldFollowup = true;
         } catch (err) {
           toolResultStrings.push(`[TOOL ERROR: launch_app("${command}")]: ${err.message}`);
-          updatedContent += `\n\n❌ [Ilova Xatosi]: ${err.message}`;
           shouldFollowup = true;
         }
       }
@@ -499,13 +582,7 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
       try {
         const res = await desktopApi.takeScreenshot(0.8, null, true);
         if (res && res.success) {
-          const imgUrl = res.data_url || (res.base64 ? `data:image/png;base64,${res.base64}` : "");
           toolResultStrings.push(`[TOOL RESULT: take_screenshot]: Screenshot captured successfully (${res.width}x${res.height}) at ${res.path}.`);
-          if (imgUrl) {
-            updatedContent += `\n\n📸 **[Ekran Skrinshoti Olindi]**: (${res.width}x${res.height})\n![Ekran](${imgUrl})`;
-          } else {
-            updatedContent += `\n\n📸 **[Ekran Skrinshoti Olindi]**: (${res.width}x${res.height}) [${res.path}]`;
-          }
           shouldFollowup = true;
         }
       } catch (err) {
@@ -515,12 +592,11 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
 
     // 7. focus_window
     else if (action === "focus_window") {
-      const query = (attrs.query || body || "").trim();
+      const query = (attrs.query || body || "").trim().replace(/^["']|["']$/g, "");
       if (query) {
         try {
           await desktopApi.focusWindow(query);
           toolResultStrings.push(`[TOOL RESULT: focus_window("${query}")]: Focused.`);
-          updatedContent += `\n\n🪟 [Oyna Tanlandi]: "${query}"`;
           shouldFollowup = true;
         } catch (err) {
           toolResultStrings.push(`[TOOL ERROR: focus_window]: ${err.message}`);
@@ -537,7 +613,6 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
       try {
         await desktopApi.mouseClick(x, y, button, clicks);
         toolResultStrings.push(`[TOOL RESULT: mouse_click]: Clicked at (${x}, ${y}) with ${button}.`);
-        updatedContent += `\n\n🖱️ [Sichqoncha Bosildi]: (${x}, ${y}) [${button}]`;
         shouldFollowup = true;
       } catch (err) {
         toolResultStrings.push(`[TOOL ERROR: mouse_click]: ${err.message}`);
@@ -549,8 +624,7 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
       const text = attrs.text || body || "";
       try {
         await desktopApi.keyboardType(text);
-        toolResultStrings.push(`[TOOL RESULT: keyboard_type]: Typed "${text}".`);
-        updatedContent += `\n\n⌨️ [Matn Yozildi]: "${text}"`;
+        toolResultStrings.push(`[TOOL RESULT: keyboard_type]: Typed text.`);
         shouldFollowup = true;
       } catch (err) {
         toolResultStrings.push(`[TOOL ERROR: keyboard_type]: ${err.message}`);
@@ -560,11 +634,10 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
     // 10. kill_process
     else if (action === "kill_process") {
       const pid = attrs.pid ? parseInt(attrs.pid, 10) : null;
-      const name = attrs.name || body || null;
+      const name = (attrs.name || body || "").trim().replace(/^["']|["']$/g, "") || null;
       try {
         const res = await desktopApi.killProcess(pid, name);
         toolResultStrings.push(`[TOOL RESULT: kill_process]: ${res?.success ? "Terminated" : res?.error}`);
-        updatedContent += `\n\n🛑 [Jarayon To'xtatildi]: ${name || pid}`;
         shouldFollowup = true;
       } catch (err) {
         toolResultStrings.push(`[TOOL ERROR: kill_process]: ${err.message}`);
@@ -573,7 +646,7 @@ async function executeDesktopToolCalls(rawContent, desktopApi) {
   }
 
   return {
-    executedText: updatedContent,
+    executedText: cleanUserFacingText(rawContent),
     toolResultText: toolResultStrings.join("\n\n"),
     shouldFollowup: shouldFollowup && toolResultStrings.length > 0,
   };
@@ -1092,51 +1165,73 @@ export default function Chat() {
         const uName = desktopApi.username || "user";
 
         desktopPromptContext = `\n\n[NATIVE WINDOWS DESKTOP ENVIRONMENT]
-You are running as the native Oryxgen Desktop AI Agent directly on this user's Windows computer (similar to the ChatGPT Desktop app).
+You are running as the native Oryxgen Desktop AI Agent directly on this user's Windows computer.
 Current User: ${uName}
 User Profile: ${uProfile}
 Desktop Folder: ${dPath}
-Operating System: Windows
+Operating System: Windows 10/11
 
 CRITICAL NATIVE SYSTEM INSTRUCTIONS:
 - You HAVE DIRECT ACCESS to the user's computer via native desktop tools.
-- NEVER claim that you do not have access to the computer, PC, files, or desktop. NEVER say "Menda sening kompyuteringga kirish imkoni yo'q" or "I cannot access your PC". You DO have direct access.
-- When the user asks about files, folders, running apps, desktop items, opening apps, taking screenshots, or running commands, invoke the appropriate XML tool tag in your response. The desktop app will execute it natively and feed the real results back to you.
+- NEVER claim that you do not have access to the computer, PC, files, or desktop. You DO have direct access.
+- When the user asks about files, folders, running apps, desktop items, or running commands, invoke the appropriate XML tool tag in your response.
 
-AVAILABLE TOOL TAGS:
-1. List directory files and folders:
+═══════════════════════════════════════
+AVAILABLE TOOL TAGS (10 TOOLS):
+═══════════════════════════════════════
+
+1. RUN POWERSHELL COMMAND — Execute any real PowerShell or CMD command:
+<run_command>Get-ChildItem -Path "${dPath}"</run_command>
+
+More examples of REAL PowerShell commands:
+<run_command>Get-ChildItem -Path "C:\\" -Directory</run_command>
+<run_command>Get-Process | Select-Object -First 20 Name, Id, CPU</run_command>
+<run_command>Get-Content -Path "C:\\Users\\${uName}\\Desktop\\file.txt"</run_command>
+<run_command>Test-Path -Path "C:\\Users\\${uName}\\Documents"</run_command>
+<run_command>[System.Environment]::OSVersion</run_command>
+<run_command>Get-ComputerInfo | Select-Object WindowsVersion, OsArchitecture, CsTotalPhysicalMemory</run_command>
+<run_command>Get-ChildItem -Path "${dPath}" -Recurse -File | Measure-Object -Property Length -Sum</run_command>
+
+2. LIST DIRECTORY — Quick folder listing:
 <list_dir path="${dPath}" />
 
-2. Run terminal / PowerShell / CMD command:
-<run_command command="dir" cwd="${dPath}" />
+3. READ FILE:
+<read_file path="C:\\Users\\${uName}\\Desktop\\file.txt" />
 
-3. Read file content:
-<read_file path="C:\\path\\file.txt" />
+4. WRITE FILE:
+<write_file path="C:\\Users\\${uName}\\Desktop\\file.txt">content here</write_file>
 
-4. Write or create file:
-<write_file path="C:\\path\\file.txt">content here</write_file>
+5. LAUNCH APP:
+<launch_app command="notepad.exe" />
 
-5. Launch an application:
-<launch_app command="telegram" /> or <launch_app command="notepad.exe" /> or <launch_app command="calc.exe" />
-
-6. Take screenshot and analyze screen:
+6. SCREENSHOT:
 <take_screenshot />
 
-7. Focus / switch window:
+7. FOCUS WINDOW:
 <focus_window query="Chrome" />
 
-8. Mouse click:
+8. MOUSE CLICK:
 <mouse_click x="500" y="300" button="left" />
 
-9. Keyboard type:
+9. KEYBOARD TYPE:
 <keyboard_type text="hello" />
 
-10. Kill process:
+10. KILL PROCESS:
 <kill_process name="notepad.exe" />
 
-When the user asks about desktop folders (e.g. "desktopdagi folderlar qancha?" or "fayllarni ko'rsat"):
-IMMEDIATELY invoke: <list_dir path="${dPath}" />
-The system will run this tool, fetch the real items on their desktop, and give them back to you to answer the user.\n\n`;
+═══════════════════════════════════════
+MANDATORY POWERSHELL RULES:
+═══════════════════════════════════════
+- ONLY use REAL PowerShell cmdlets that actually exist in Windows:
+  ✅ Get-ChildItem, Get-Process, Stop-Process, Get-Content, Set-Content,
+     Test-Path, Start-Process, Get-Service, Get-ComputerInfo,
+     Measure-Object, Select-Object, Where-Object, Format-Table, dir, tasklist
+- FORBIDDEN — these are NOT real commands, NEVER use them:
+  ❌ cwd, pwd (use Get-Location instead), ls (use Get-ChildItem or dir)
+- To list a specific folder, use -Path parameter: Get-ChildItem -Path "C:\\"
+- Put the command INSIDE the tag body: <run_command>your command here</run_command>
+- The system runs it in native 64-bit PowerShell (powershell.exe) and returns the real output.
+- After receiving tool results, write a clean, natural-language answer in Uzbek. NEVER show raw XML tags or internal tool syntax to the user.\n\n`;
       }
 
       const finalSystemPrompt = identityPrefix + (desktopPromptContext || "") + (systemPrompt || "");
@@ -1177,12 +1272,19 @@ The system will run this tool, fetch the real items on their desktop, and give t
             if (hasToolCalls) {
               try {
                 const execution = await executeDesktopToolCalls(assistantContent, desktopApi);
+                const cleanBaseText = execution?.executedText || cleanUserFacingText(assistantContent);
+
                 if (execution && execution.shouldFollowup && execution.toolResultText) {
-                  // Show the executed tool output immediately in the UI
+                  // Show clean status badge while preparing the final response (NO raw code blocks or XML tags!)
                   setMessages((prev) =>
                     prev.map((msg) =>
                       msg.id === assistantMsgId
-                        ? { ...msg, content: execution.executedText + "\n\n⏳ *Javob tayyorlanmoqda...*" }
+                        ? {
+                            ...msg,
+                            content: cleanBaseText
+                              ? `${cleanBaseText}\n\n*⚡ Tizim tekshirilmoqda va javob tayyorlanmoqda...*`
+                              : "*⚡ Tizim tekshirilmoqda va javob tayyorlanmoqda...*",
+                          }
                         : msg
                     )
                   );
@@ -1190,10 +1292,10 @@ The system will run this tool, fetch the real items on their desktop, and give t
                   // Follow-up call so the LLM synthesizes a clean, natural-language Uzbek response
                   const toolFollowUpMessages = [
                     ...newMessages.map((m) => ({ role: m.role, content: m.content, image: m.image })),
-                    { role: "assistant", content: assistantContent },
+                    { role: "assistant", content: cleanBaseText || "Tizim ma'lumotlari tahlil qilinmoqda..." },
                     {
                       role: "user",
-                      content: `[TOOL EXECUTION RESULTS FROM WINDOWS PC]:\n${execution.toolResultText}\n\nIltimos, yuqoridagi haqiqiy kompyuter natijalariga asoslanib, foydalanuvchining savoliga to'liq, chiroyli va aniq javob bering.`,
+                      content: `[KOMPYUTERDA BAJARILGAN AMAL VA NATIJALAR]:\n${execution.toolResultText}\n\nIltimos, yuqoridagi haqiqiy tizim natijalariga asoslanib, foydalanuvchining savoliga to'liq, aniq va chiroyli javob bering. Hech qanday ichki XML teglari, xom buyruqlar yoki texnik xatolik kodlarini foydalanuvchiga to'g'ridan-to'g'ri ko'rsatmang.`,
                     },
                   ];
 
@@ -1209,12 +1311,17 @@ The system will run this tool, fetch the real items on their desktop, and give t
                     },
                     (chunk) => {
                       followUpText += chunk;
+                      const cleanFollowUp = cleanUserFacingText(followUpText);
+                      const displayContent = cleanBaseText
+                        ? `${cleanBaseText}\n\n${cleanFollowUp}`
+                        : cleanFollowUp;
+
                       setMessages((prev) =>
                         prev.map((msg) =>
                           msg.id === assistantMsgId
                             ? {
                                 ...msg,
-                                content: `${execution.executedText}\n\n---\n\n${followUpText}`,
+                                content: displayContent,
                                 thinking: followUpThinking || assistantThinking,
                               }
                             : msg
@@ -1226,7 +1333,14 @@ The system will run this tool, fetch the real items on their desktop, and give t
                     },
                     () => {
                       setIsStreaming(false);
-                      const fullFinal = `${execution.executedText}\n\n---\n\n${followUpText}`;
+                      const cleanFollowUp = cleanUserFacingText(followUpText);
+                      let fullFinal = cleanBaseText
+                        ? `${cleanBaseText}\n\n${cleanFollowUp}`
+                        : cleanFollowUp;
+                      if (!fullFinal.trim()) {
+                        fullFinal = "Tizim ma'lumotlari muvaffaqiyatli tahlil qilindi.";
+                      }
+
                       const finalMessages = [
                         ...newMessages,
                         { id: assistantMsgId, role: "assistant", content: fullFinal, thinking: followUpThinking || assistantThinking, model: selectedModel },
@@ -1238,15 +1352,21 @@ The system will run this tool, fetch the real items on their desktop, and give t
                       setIsStreaming(false);
                       const finalMessages = [
                         ...newMessages,
-                        { id: assistantMsgId, role: "assistant", content: execution.executedText, thinking: assistantThinking, model: selectedModel },
+                        { id: assistantMsgId, role: "assistant", content: cleanBaseText || "Tizim tahlili yakunlandi.", thinking: assistantThinking, model: selectedModel },
                       ];
                       setMessages(finalMessages);
                       persistUpdatedChat(finalMessages, projectFiles);
                     }
                   );
                   return;
-                } else if (execution?.executedText) {
-                  assistantContent = execution.executedText;
+                } else if (cleanBaseText) {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMsgId
+                        ? { ...msg, content: cleanBaseText }
+                        : msg
+                    )
+                  );
                 }
               } catch (toolErr) {
                 console.error("Desktop tool execution error:", toolErr);
@@ -1783,7 +1903,8 @@ The system will run this tool, fetch the real items on their desktop, and give t
               <div className="messages-flow">
                 {messages.map((m, idx) => {
                   const isLastStreaming = isStreaming && idx === messages.length - 1;
-                  const { thinking: msgThinking, content: msgContent } = extractThinkingAndContent(m.content, m.thinking);
+                  const { thinking: msgThinking, content: rawMsgContent } = extractThinkingAndContent(m.content, m.thinking);
+                  const msgContent = m.role === "assistant" ? cleanUserFacingText(rawMsgContent) : rawMsgContent;
                   const isExpanded = isLastStreaming ? true : !!thinkingExpandedMap[m.id];
                   const hasThinking = Boolean(msgThinking && msgThinking.trim().length > 0);
                   return (

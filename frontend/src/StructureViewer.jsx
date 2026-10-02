@@ -35,9 +35,25 @@ export function isDirectoryTreeCode(code = "") {
   const lines = code.trim().split("\n");
   if (lines.length < 3) return false;
 
+  // Never match terminal outputs, PowerShell error stack traces, or command logs
+  if (
+    code.includes("CategoryInfo") ||
+    code.includes("FullyQualifiedErrorId") ||
+    code.includes("The term '") ||
+    code.includes("CommandNotFoundException") ||
+    code.includes("Terminal") ||
+    code.includes("powershell") ||
+    code.includes("CMD") ||
+    code.includes("bash:") ||
+    code.includes("Traceback (most recent call last)")
+  ) {
+    return false;
+  }
+
   let treeMarkers = 0;
   for (const line of lines) {
-    if (/[├──└──│|\\]/.test(line) || /^\s*[\w.-]+\/\s*(?:#.*)?$/.test(line)) {
+    // Only true box-drawing tree characters or structured directory notations
+    if (/[├──└──│──]/.test(line) || /^[│|\s]*[├└]──\s*\S+/.test(line)) {
       treeMarkers++;
     }
   }

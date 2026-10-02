@@ -6,46 +6,50 @@ const RESTRICTED_MODELS = new Set([
   "poolside/laguna-xs-2.1:free",
 ]);
 
-// Fallback curated list of high-reliability free endpoints on OpenRouter
+// Fallback curated list of high-speed, reliable free endpoints on OpenRouter
 const FALLBACK_FREE_MODELS = [
-  "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
   "nvidia/nemotron-3.5-lightning:free",
-  "google/gemma-4-31b-it:free",
   "google/gemma-4-26b-a4b-it:free",
   "qwen/qwen3.8-27b:free",
+  "google/gemma-4-31b-it:free",
   "cohere/north-mini-code:free",
   "openrouter/free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
 ];
 
 const BY_CAPABILITY = {
   reason: [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-3.5-lightning:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "qwen/qwen3.8-27b:free",
     "google/gemma-4-31b-it:free",
     "openrouter/free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
   ],
   code: [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-3.5-lightning:free",
     "cohere/north-mini-code:free",
+    "qwen/qwen3.8-27b:free",
+    "google/gemma-4-26b-a4b-it:free",
     "google/gemma-4-31b-it:free",
     "openrouter/free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
   ],
   vision: [
-    "google/gemma-4-31b-it:free",
     "google/gemma-4-26b-a4b-it:free",
+    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "openrouter/free",
   ],
   chat: [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3.5-lightning:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "qwen/qwen3.8-27b:free",
     "google/gemma-4-31b-it:free",
     "openrouter/free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
   ],
 };
 
@@ -110,7 +114,7 @@ export async function resolveUpstream(capability = "chat", requestedModelId = ""
   // Check if requested model itself is directly in the free pool and unrestricted
   if ((pool.has(requestedModelId) || pool.has(`${requestedModelId}:free`)) && !RESTRICTED_MODELS.has(requestedModelId)) {
     const directId = pool.has(requestedModelId) ? requestedModelId : `${requestedModelId}:free`;
-    return [directId, "nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter/free"];
+    return [directId, "nvidia/nemotron-3.5-lightning:free", "google/gemma-4-26b-a4b-it:free", "openrouter/free"];
   }
 
   const preferred = BY_CAPABILITY[capability] || BY_CAPABILITY.chat;
@@ -123,12 +127,14 @@ export async function resolveUpstream(capability = "chat", requestedModelId = ""
 
 // Config-driven ranking of best free models for code generation and multi-file project synthesis
 export const CODEX_RANKED_MODELS = [
-  "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
   "nvidia/nemotron-3.5-lightning:free",
-  "google/gemma-4-31b-it:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "qwen/qwen3.8-27b:free",
   "cohere/north-mini-code:free",
+  "google/gemma-4-31b-it:free",
   "openrouter/free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
 ];
 
 export async function resolveBestCodeModel() {
