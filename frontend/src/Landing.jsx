@@ -9,8 +9,13 @@ const HERO_SRC =
 export default function Landing() {
   const navigate = useNavigate();
 
-  // Auto-redirect to /app if already logged in
+  // Auto-redirect to /app if already logged in or in desktop app
   useEffect(() => {
+    const isDesktop = typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI || window.location.protocol === "file:");
+    if (isDesktop) {
+      navigate("/app", { replace: true });
+      return;
+    }
     const token = getAuthToken();
     const user = getStoredUser();
     if (token && user) {

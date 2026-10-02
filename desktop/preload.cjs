@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const path = require("path");
 
-contextBridge.exposeInMainWorld("oryxgenDesktop", {
+const desktopApis = {
   isDesktop: true,
   version: "2.5.0",
   platform: process.platform,
@@ -70,9 +70,10 @@ contextBridge.exposeInMainWorld("oryxgenDesktop", {
     ipcRenderer.on("auth:deep-link", handler);
     return () => ipcRenderer.removeListener("auth:deep-link", handler);
   },
-});
+};
 
-// Also expose as electronAPI for standard compatibility
+contextBridge.exposeInMainWorld("oryxgenDesktop", desktopApis);
 try {
-  window.electronAPI = window.oryxgenDesktop;
+  contextBridge.exposeInMainWorld("electronAPI", desktopApis);
 } catch {}
+

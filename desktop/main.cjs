@@ -84,13 +84,21 @@ function createWindow() {
 
   const indexPath = path.join(__dirname, "dist", "index.html");
   if (fs.existsSync(indexPath)) {
-    mainWindow.loadFile(indexPath);
+    mainWindow.loadFile(indexPath, { hash: "app" });
   } else {
     mainWindow.loadURL("https://avg-ai-creator.site/app");
   }
 
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  });
+
   mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
     const initialUrl = process.argv
       .map((arg) => (typeof arg === "string" ? arg.trim().replace(/^"|"$/g, "") : ""))
       .find((arg) => arg.toLowerCase().startsWith("oryxgen://"));
@@ -98,6 +106,13 @@ function createWindow() {
       setTimeout(() => handleDeepLinkUrl(initialUrl), 600);
     }
   });
+
+  // Failsafe: guarantee window visibility after 1200ms
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 1200);
 
   // Tray Setup
   try {
@@ -295,7 +310,12 @@ function startAuthServer() {
           }
           if (token || user) {
             pendingAuthData = { token, user };
-            if (mainWindow) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.executeJavaScript(`
+                if (window.location.hash !== "#/app" && window.location.hash !== "#app") {
+                  window.location.hash = "#/app";
+                }
+              `).catch(() => {});
               mainWindow.webContents.send("auth:deep-link", { token, user });
               if (mainWindow.isMinimized()) mainWindow.restore();
               mainWindow.show();
@@ -369,7 +389,12 @@ function handleDeepLinkUrl(rawUrl) {
 
     if (token || user) {
       pendingAuthData = { token, user };
-      if (mainWindow) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.executeJavaScript(`
+          if (window.location.hash !== "#/app" && window.location.hash !== "#app") {
+            window.location.hash = "#/app";
+          }
+        `).catch(() => {});
         mainWindow.webContents.send("auth:deep-link", { token, user });
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();

@@ -798,7 +798,7 @@ export default function Chat() {
   useEffect(() => {
     if (currentUser) {
       getUserSystemPrompt().then(prompt => {
-        if (prompt && (!activeChat || activeChat.id === "chat-1" || activeChat.messages.length === 0)) {
+        if (prompt && (!activeChat || activeChat.id === "chat-1" || !activeChat.messages || activeChat.messages.length === 0)) {
           setSystemPrompt(prompt);
           setActiveSkillId("custom");
         }
@@ -1590,10 +1590,16 @@ The system will run this tool, fetch the real items on their desktop, and give t
         <div className="sidebar-user-footer">
           {currentUser ? (
             <div className="user-profile-row">
-              <img src={currentUser.avatar} alt="Avatar" className="user-avatar" />
+              {currentUser.avatar ? (
+                <img src={currentUser.avatar} alt="Avatar" className="user-avatar" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              ) : (
+                <div className="user-avatar" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "32px", height: "32px", borderRadius: "50%", background: "#3b82f6", color: "#fff", fontWeight: "600", fontSize: "13px" }}>
+                  {(currentUser.name || currentUser.email || "U")[0].toUpperCase()}
+                </div>
+              )}
               <div className="user-info-text">
-                <div className="user-name">{currentUser.name}</div>
-                <div className="user-sub">{currentUser.email || currentUser.phone}</div>
+                <div className="user-name">{currentUser.name || "Foydalanuvchi"}</div>
+                <div className="user-sub">{currentUser.email || currentUser.phone || ""}</div>
               </div>
               <button
                 type="button"
