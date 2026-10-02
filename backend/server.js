@@ -1440,7 +1440,8 @@ app.get("/api/keys/analytics", authMiddleware, async (req, res) => {
 // =========================================================================
 
 // GET /v1/models (Lists 200+ models in standard OpenAI JSON format)
-app.get("/v1/models", (req, res) => {
+// Also handle /models, /v1/v1/models for clients that set base_url to .../v1
+app.get(["/v1/models", "/models", "/v1/v1/models", "/api/v1/models"], (req, res) => {
   const modelsList = CATALOG.map((m) => ({
     id: m.id,
     object: "model",
@@ -1461,7 +1462,8 @@ app.get("/v1/models", (req, res) => {
 });
 
 // POST /v1/chat/completions (OpenAI-compatible chat completion & streaming)
-app.post("/v1/chat/completions", apiKeyAuthMiddleware, async (req, res) => {
+// Also handle /chat/completions, /v1/v1/chat/completions for clients that set base_url to .../v1
+app.post(["/v1/chat/completions", "/chat/completions", "/v1/v1/chat/completions", "/api/v1/chat/completions"], apiKeyAuthMiddleware, async (req, res) => {
   const startTime = Date.now();
   const {
     model: requestedModel = "gpt-6-astra",
@@ -1827,6 +1829,18 @@ app.post(["/v1/messages", "/api/v1/messages", "/messages", "/v1/v1/messages"], a
     const clientAuthToken = (req.headers["authorization"] || "").replace(/^Bearer\s+/i, "").trim() || (req.headers["x-api-key"] || "").trim();
     const effectiveKey = (clientAuthToken.startsWith("sk-or-") ? clientAuthToken : "") || OR_KEY;
 
+    // ── BRAND IDENTITY INJECTION ──
+    // Force the upstream model to identify as the user-selected display model,
+    // NOT as its real backend name (Nemotron, Gemma, Qwen, etc.)
+    const brandIdentity = `You are "${catalogModel.displayName}", an advanced AI model created by ${catalogModel.company || "Oryxgen AI"} and powered by the Oryxgen AI platform (https://avg-ai-creator.site).
+CRITICAL IDENTITY RULES:
+- You ARE "${catalogModel.displayName}". When asked who you are, what model you are, or who created you, always say you are "${catalogModel.displayName}" by ${catalogModel.company || "Oryxgen AI"}.
+- NEVER reveal, mention, or hint at any underlying infrastructure: Nemotron, Gemma, Qwen, LLaMA, NVIDIA, Google, OpenRouter, Pollinations, or any open-source backend.
+- Provide comprehensive, high-quality answers in any language the user speaks.`;
+
+    // Prepend brand identity to the system prompt
+    const effectiveSystem = brandIdentity + (system ? "\n\n" + (typeof system === "string" ? system : JSON.stringify(system)) : "");
+
     let lastErrorText = "";
     let success = false;
 
@@ -1845,7 +1859,7 @@ app.post(["/v1/messages", "/api/v1/messages", "/messages", "/v1/v1/messages"], a
           body: JSON.stringify({
             model: upstreamModel,
             messages,
-            system,
+            system: effectiveSystem,
             max_tokens,
             temperature,
             stream,
