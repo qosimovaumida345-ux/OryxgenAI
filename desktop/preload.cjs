@@ -1,9 +1,13 @@
 const { contextBridge, ipcRenderer } = require("electron");
+const path = require("path");
 
 contextBridge.exposeInMainWorld("oryxgenDesktop", {
   isDesktop: true,
   version: "2.5.0",
   platform: process.platform,
+  username: process.env.USERNAME || "",
+  userProfile: process.env.USERPROFILE || "",
+  desktopPath: process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "Desktop") : "",
 
   // File Operations
   readFile: (filePath) => ipcRenderer.invoke("file:read", filePath),

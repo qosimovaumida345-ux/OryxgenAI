@@ -336,6 +336,192 @@ function extractThinkingAndContent(content = "", existingThinking = "") {
   return { thinking, content: cleanContent };
 }
 
+// ── Native Desktop Tool Execution Engine (ChatGPT & Claude Desktop Architecture) ──
+async function executeDesktopToolCalls(rawContent, desktopApi) {
+  if (!desktopApi || typeof rawContent !== "string") {
+    return { executedText: rawContent, toolResultText: "", shouldFollowup: false };
+  }
+
+  let updatedContent = rawContent;
+  let toolResultStrings = [];
+  let shouldFollowup = false;
+
+  // Visual edge glow
+  try {
+    if (desktopApi.startGlow) desktopApi.startGlow(2.5);
+  } catch { }
+
+  const defaultDesktop = desktopApi.desktopPath || "C:\\Users\\user\\Desktop";
+
+  // 1. List Dir Tool
+  const listDirRegex = /<(?:tool_call>\s*)?<list_dir\s+path="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  let match;
+  while ((match = listDirRegex.exec(rawContent)) !== null) {
+    let targetPath = match[1].trim();
+    if (targetPath.toLowerCase() === "desktop" || targetPath.toLowerCase() === "~/desktop") {
+      targetPath = defaultDesktop;
+    }
+    try {
+      const res = await desktopApi.listDir(targetPath);
+      if (res && res.success && Array.isArray(res.items)) {
+        const folders = res.items.filter((i) => i.isDirectory).map((i) => i.name);
+        const files = res.items.filter((i) => !i.isDirectory).map((i) => i.name);
+        const summary = `Manzil: "${targetPath}"\nJami: ${res.items.length} ta element (${folders.length} ta papka, ${files.length} ta fayl)\n\nPapkalar (${folders.length} ta):\n${folders.map((f) => `• 📁 ${f}`).join("\n") || "(Papkalar yo'q)"}\n\nFayllar (${files.length} ta):\n${files.map((f) => `• 📄 ${f}`).join("\n") || "(Fayllar yo'q)"}`;
+
+        toolResultStrings.push(`[TOOL RESULT: list_dir("${targetPath}")]:\n${summary}`);
+        updatedContent += `\n\n\`\`\`text\n📁 [Katalog Tekshirildi: ${targetPath}]\n${summary}\n\`\`\``;
+        shouldFollowup = true;
+      } else {
+        const errMsg = res?.error || "Papka topilmadi";
+        toolResultStrings.push(`[TOOL ERROR: list_dir("${targetPath}")]: ${errMsg}`);
+        updatedContent += `\n\n❌ [Katalog Xatosi]: ${errMsg}`;
+      }
+    } catch (err) {
+      toolResultStrings.push(`[TOOL EXCEPTION: list_dir]: ${err.message}`);
+      updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
+    }
+  }
+
+  // 2. Run Command Tool
+  const runCmdRegex = /<(?:tool_call>\s*)?<run_command\s+command="([^"]+)"(?: \s*cwd="([^"]+)")?\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  while ((match = runCmdRegex.exec(rawContent)) !== null) {
+    const command = match[1].trim();
+    const cwd = match[2]?.trim() || defaultDesktop;
+    try {
+      const res = await desktopApi.runCommand(command, cwd);
+      const out = (res?.output || res?.stdout || res?.error || (res?.success ? "Bajarildi" : "Xatolik")).trim();
+      toolResultStrings.push(`[TOOL RESULT: run_command("${command}")]:\n${out}`);
+      updatedContent += `\n\n\`\`\`powershell\n⚡ [Terminal Buyrug'i: ${command}]\n${out}\n\`\`\``;
+      shouldFollowup = true;
+    } catch (err) {
+      toolResultStrings.push(`[TOOL ERROR: run_command("${command}")]: ${err.message}`);
+      updatedContent += `\n\n❌ [Terminal Xatosi]: ${err.message}`;
+    }
+  }
+
+  // 3. Read File Tool
+  const readFileRegex = /<(?:tool_call>\s*)?<read_file\s+path="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  while ((match = readFileRegex.exec(rawContent)) !== null) {
+    const filePath = match[1].trim();
+    try {
+      const res = await desktopApi.readFile(filePath);
+      if (res && res.success) {
+        toolResultStrings.push(`[TOOL RESULT: read_file("${filePath}")]:\n${res.content}`);
+        updatedContent += `\n\n\`\`\`text\n📄 [Fayl O'qildi: ${filePath}]\n${res.content.slice(0, 2000)}${res.content.length > 2000 ? "\n...(qisqartirildi)..." : ""}\n\`\`\``;
+        shouldFollowup = true;
+      } else {
+        const errMsg = res?.error || "Fayl topilmadi";
+        toolResultStrings.push(`[TOOL ERROR: read_file("${filePath}")]: ${errMsg}`);
+        updatedContent += `\n\n❌ [Fayl Xatosi]: ${errMsg}`;
+      }
+    } catch (err) {
+      toolResultStrings.push(`[TOOL EXCEPTION: read_file]: ${err.message}`);
+      updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
+    }
+  }
+
+  // 4. Write File Tool
+  const writeFileRegex = /<(?:tool_call>\s*)?<write_file\s+path="([^"]+)">([\s\S]*?)<\/write_file>(?:\s*<\/tool_call>)?/gi;
+  while ((match = writeFileRegex.exec(rawContent)) !== null) {
+    const filePath = match[1].trim();
+    const content = match[2];
+    try {
+      const res = await desktopApi.writeFile(filePath, content);
+      if (res && res.success) {
+        toolResultStrings.push(`[TOOL RESULT: write_file("${filePath}")]: Successfully saved ${content.length} bytes.`);
+        updatedContent += `\n\n✅ [Fayl Saqlandi]: \`${filePath}\` (${content.length} bayt)`;
+        shouldFollowup = true;
+      } else {
+        const errMsg = res?.error || "Fayl saqlanmadi";
+        toolResultStrings.push(`[TOOL ERROR: write_file("${filePath}")]: ${errMsg}`);
+        updatedContent += `\n\n❌ [Fayl Saqlash Xatosi]: ${errMsg}`;
+      }
+    } catch (err) {
+      toolResultStrings.push(`[TOOL EXCEPTION: write_file]: ${err.message}`);
+      updatedContent += `\n\n❌ [Xatolik]: ${err.message}`;
+    }
+  }
+
+  // 5. Launch App Tool
+  const launchAppRegex = /<(?:tool_call>\s*)?<launch_app\s+command="([^"]+)"(?: \s*args="([^"]+)")?\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  while ((match = launchAppRegex.exec(rawContent)) !== null) {
+    const command = match[1].trim();
+    const args = match[2]?.trim() || "";
+    try {
+      const res = await desktopApi.launchApp(command, args);
+      toolResultStrings.push(`[TOOL RESULT: launch_app("${command}")]: Launched successfully.`);
+      updatedContent += `\n\n🚀 [Ilova Ishga Tushirildi]: \`${command} ${args}\``.trim();
+      shouldFollowup = true;
+    } catch (err) {
+      toolResultStrings.push(`[TOOL ERROR: launch_app("${command}")]: ${err.message}`);
+      updatedContent += `\n\n❌ [Ilova Xatosi]: ${err.message}`;
+    }
+  }
+
+  // 6. Screenshot Tool
+  const shotRegex = /<(?:tool_call>\s*)?<take_screenshot\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  if (shotRegex.test(rawContent)) {
+    try {
+      const res = await desktopApi.takeScreenshot(0.8);
+      if (res && res.success) {
+        toolResultStrings.push(`[TOOL RESULT: take_screenshot]: Screenshot saved at ${res.path} (${res.width}x${res.height}).`);
+        updatedContent += `\n\n📸 **[Ekran Skrinshoti Olindi]**: (${res.width}x${res.height})\n![Ekran](file://${res.path})`;
+        shouldFollowup = true;
+      }
+    } catch (err) {
+      toolResultStrings.push(`[TOOL ERROR: take_screenshot]: ${err.message}`);
+    }
+  }
+
+  // 7. Focus Window
+  const focusRegex = /<(?:tool_call>\s*)?<focus_window\s+query="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  while ((match = focusRegex.exec(rawContent)) !== null) {
+    const query = match[1].trim();
+    try {
+      await desktopApi.focusWindow(query);
+      toolResultStrings.push(`[TOOL RESULT: focus_window("${query}")]: Focused.`);
+      updatedContent += `\n\n🪟 [Oyna Tanlandi]: "${query}"`;
+    } catch (err) {
+      toolResultStrings.push(`[TOOL ERROR: focus_window]: ${err.message}`);
+    }
+  }
+
+  // 8. Mouse Click
+  const clickRegex = /<(?:tool_call>\s*)?<mouse_click\s+x="(\d+)"\s+y="(\d+)"(?: \s*button="([^"]+)")?(?: \s*clicks="(\d+)")?\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  while ((match = clickRegex.exec(rawContent)) !== null) {
+    const x = parseInt(match[1], 10);
+    const y = parseInt(match[2], 10);
+    const button = match[3] || "left";
+    const clicks = parseInt(match[4] || "1", 10);
+    try {
+      await desktopApi.mouseClick(x, y, button, clicks);
+      toolResultStrings.push(`[TOOL RESULT: mouse_click]: Clicked at (${x}, ${y}) with ${button}.`);
+      updatedContent += `\n\n🖱️ [Sichqoncha Bosildi]: (${x}, ${y}) [${button}]`;
+    } catch (err) {
+      toolResultStrings.push(`[TOOL ERROR: mouse_click]: ${err.message}`);
+    }
+  }
+
+  // 9. Keyboard Type
+  const typeRegex = /<(?:tool_call>\s*)?<keyboard_type\s+text="([^"]+)"\s*\/?>(?:\s*<\/tool_call>)?/gi;
+  while ((match = typeRegex.exec(rawContent)) !== null) {
+    const text = match[1];
+    try {
+      await desktopApi.keyboardType(text);
+      toolResultStrings.push(`[TOOL RESULT: keyboard_type]: Typed "${text}".`);
+      updatedContent += `\n\n⌨️ [Matn Yozildi]: "${text}"`;
+    } catch (err) {
+      toolResultStrings.push(`[TOOL ERROR: keyboard_type]: ${err.message}`);
+    }
+  }
+
+  return {
+    executedText: updatedContent,
+    toolResultText: toolResultStrings.join("\n\n"),
+    shouldFollowup: shouldFollowup && toolResultStrings.length > 0,
+  };
+}
+
 export default function Chat() {
   const [models, setModels] = useState([]);
   const [chats, setChats] = useState(getStoredChats);
@@ -383,6 +569,32 @@ export default function Chat() {
   const [mcpCopied, setMcpCopied] = useState(false);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
+  const [attachedScreenshot, setAttachedScreenshot] = useState(null);
+
+  const handleCaptureScreenVision = async () => {
+    const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
+    if (!desktopApi) return;
+    try {
+      if (desktopApi.startGlow) desktopApi.startGlow(1.5);
+      const res = await desktopApi.takeScreenshot(0.8);
+      if (res && res.success) {
+        let ocrText = "";
+        try {
+          const ocrRes = await desktopApi.ocrScreen();
+          if (ocrRes && ocrRes.text) ocrText = ocrRes.text;
+        } catch { }
+
+        setAttachedScreenshot({
+          path: res.path,
+          width: res.width,
+          height: res.height,
+          ocrText,
+        });
+      }
+    } catch (err) {
+      console.error("Screen vision capture error:", err);
+    }
+  };
 
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [searchModel, setSearchModel] = useState("");
@@ -420,7 +632,7 @@ export default function Chat() {
           setCurrentUser(data.user);
           setIsAuthOpen(false);
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     if (desktopApi.onAuthDeepLink) {
@@ -628,18 +840,52 @@ export default function Chat() {
   };
 
   const handleSendMessage = async (customText = null) => {
-    const text = (customText || input).trim();
-    if (!text || isStreaming) return;
+    const rawInput = (customText || input).trim();
+    if (!rawInput || isStreaming) return;
 
     setInput("");
+
+    // Detect if running in Desktop app
+    const desktopApi = typeof window !== "undefined" ? (window.oryxgenDesktop || window.electronAPI) : null;
+
+    // Attach screenshot OCR context if user captured screen vision
+    let promptToSend = rawInput;
+    if (attachedScreenshot) {
+      promptToSend = `${rawInput}\n\n[📸 Biriktirilgan Ekran Skrinshoti: ${attachedScreenshot.path || "Ekran tasviri"}${attachedScreenshot.ocrText ? `\nEkrandan o'qilgan matn (OCR):\n${attachedScreenshot.ocrText}` : ""}]`;
+      setAttachedScreenshot(null);
+    }
+
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `assistant-${Date.now()}`;
 
     const newMessages = [
       ...messages,
-      { id: userMsgId, role: "user", content: text, model: selectedModel },
+      { id: userMsgId, role: "user", content: promptToSend, model: selectedModel },
     ];
     setMessages(newMessages);
+
+    const persistUpdatedChat = (finalMessages, filesToSave) => {
+      setChats((prevChats) => {
+        const updated = prevChats.map((c) => {
+          if (c.id === activeChatId) {
+            const firstUserMsg = finalMessages.find((m) => m.role === "user");
+            const title = c.title === "Yangi suhbat" && firstUserMsg ? firstUserMsg.content.slice(0, 32) : c.title;
+            const updatedChat = {
+              ...c,
+              title,
+              messages: finalMessages,
+              model: selectedModel,
+              projectFiles: filesToSave || c.projectFiles,
+            };
+            saveUserChat(updatedChat);
+            return updatedChat;
+          }
+          return c;
+        });
+        try { localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updated)); } catch { }
+        return updated;
+      });
+    };
 
     const interimChats = chats.map((c) => {
       if (c.id === activeChatId) {
@@ -652,9 +898,8 @@ export default function Chat() {
     persistChats(interimChats);
 
     // CodeX mode runs the dedicated Plan -> Generate -> Validate pipeline
-    // (backend/codexEngine.js) instead of a single chat completion.
     if (appMode === "codex") {
-      return handleCodexGenerate(text, newMessages, assistantMsgId);
+      return handleCodexGenerate(rawInput, newMessages, assistantMsgId);
     }
 
     setIsStreaming(true);
@@ -675,7 +920,62 @@ export default function Chat() {
         identityPrefix += `You are in ASK Mode. Provide deep technical explanations and answer questions about code without modifying or creating files.\n\n`;
       }
 
-      const finalSystemPrompt = identityPrefix + (systemPrompt || "");
+      // Inject Native Windows Desktop context & tool calling schemas
+      let desktopPromptContext = "";
+      if (desktopApi) {
+        const dPath = desktopApi.desktopPath || (desktopApi.userProfile ? `${desktopApi.userProfile}\\Desktop` : "C:\\Users\\user\\Desktop");
+        const uProfile = desktopApi.userProfile || "C:\\Users\\user";
+        const uName = desktopApi.username || "user";
+
+        desktopPromptContext = `\n\n[NATIVE WINDOWS DESKTOP ENVIRONMENT]
+You are running as the native Oryxgen Desktop AI Agent directly on this user's Windows computer (similar to the ChatGPT Desktop app).
+Current User: ${uName}
+User Profile: ${uProfile}
+Desktop Folder: ${dPath}
+Operating System: Windows
+
+CRITICAL NATIVE SYSTEM INSTRUCTIONS:
+- You HAVE DIRECT ACCESS to the user's computer via native desktop tools.
+- NEVER claim that you do not have access to the computer, PC, files, or desktop. NEVER say "Menda sening kompyuteringga kirish imkoni yo'q" or "I cannot access your PC". You DO have direct access.
+- When the user asks about files, folders, running apps, desktop items, opening apps, taking screenshots, or running commands, invoke the appropriate XML tool tag in your response. The desktop app will execute it natively and feed the real results back to you.
+
+AVAILABLE TOOL TAGS:
+1. List directory files and folders:
+<list_dir path="${dPath}" />
+
+2. Run terminal / PowerShell / CMD command:
+<run_command command="dir" cwd="${dPath}" />
+
+3. Read file content:
+<read_file path="C:\\path\\file.txt" />
+
+4. Write or create file:
+<write_file path="C:\\path\\file.txt">content here</write_file>
+
+5. Launch an application:
+<launch_app command="telegram" /> or <launch_app command="notepad.exe" /> or <launch_app command="calc.exe" />
+
+6. Take screenshot and analyze screen:
+<take_screenshot />
+
+7. Focus / switch window:
+<focus_window query="Chrome" />
+
+8. Mouse click:
+<mouse_click x="500" y="300" button="left" />
+
+9. Keyboard type:
+<keyboard_type text="hello" />
+
+10. Kill process:
+<kill_process name="notepad.exe" />
+
+When the user asks about desktop folders (e.g. "desktopdagi folderlar qancha?" or "fayllarni ko'rsat"):
+IMMEDIATELY invoke: <list_dir path="${dPath}" />
+The system will run this tool, fetch the real items on their desktop, and give them back to you to answer the user.\n\n`;
+      }
+
+      const finalSystemPrompt = identityPrefix + (desktopPromptContext || "") + (systemPrompt || "");
 
       await streamChat(
         {
@@ -706,7 +1006,90 @@ export default function Chat() {
             return [...prev, { id: assistantMsgId, role: "assistant", content: "", thinking: assistantThinking, model: selectedModel }];
           });
         },
-        () => {
+        async () => {
+          // --- Autonomous Desktop Tool Execution ---
+          if (desktopApi) {
+            const hasToolCalls = /<(?:tool_call>\s*)?(?:list_dir|run_command|read_file|write_file|launch_app|take_screenshot|focus_window|mouse_click|keyboard_type|kill_process)/i.test(assistantContent);
+            if (hasToolCalls) {
+              try {
+                const execution = await executeDesktopToolCalls(assistantContent, desktopApi);
+                if (execution && execution.shouldFollowup && execution.toolResultText) {
+                  // Show the executed tool output immediately in the UI
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMsgId
+                        ? { ...msg, content: execution.executedText + "\n\n⏳ *Javob tayyorlanmoqda...*" }
+                        : msg
+                    )
+                  );
+
+                  // Follow-up call so the LLM synthesizes a clean, natural-language Uzbek response
+                  const toolFollowUpMessages = [
+                    ...newMessages.map((m) => ({ role: m.role, content: m.content })),
+                    { role: "assistant", content: assistantContent },
+                    {
+                      role: "user",
+                      content: `[TOOL EXECUTION RESULTS FROM WINDOWS PC]:\n${execution.toolResultText}\n\nIltimos, yuqoridagi haqiqiy kompyuter natijalariga asoslanib, foydalanuvchining savoliga to'liq, chiroyli va aniq javob bering.`,
+                    },
+                  ];
+
+                  let followUpText = "";
+                  let followUpThinking = "";
+
+                  await streamChat(
+                    {
+                      model: selectedModel,
+                      messages: toolFollowUpMessages,
+                      systemPrompt: finalSystemPrompt,
+                      chatId: activeChatId,
+                    },
+                    (chunk) => {
+                      followUpText += chunk;
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === assistantMsgId
+                            ? {
+                                ...msg,
+                                content: `${execution.executedText}\n\n---\n\n${followUpText}`,
+                                thinking: followUpThinking || assistantThinking,
+                              }
+                            : msg
+                        )
+                      );
+                    },
+                    (thinkChunk) => {
+                      followUpThinking += thinkChunk;
+                    },
+                    () => {
+                      setIsStreaming(false);
+                      const fullFinal = `${execution.executedText}\n\n---\n\n${followUpText}`;
+                      const finalMessages = [
+                        ...newMessages,
+                        { id: assistantMsgId, role: "assistant", content: fullFinal, thinking: followUpThinking || assistantThinking, model: selectedModel },
+                      ];
+                      setMessages(finalMessages);
+                      persistUpdatedChat(finalMessages, projectFiles);
+                    },
+                    (errMsg) => {
+                      setIsStreaming(false);
+                      const finalMessages = [
+                        ...newMessages,
+                        { id: assistantMsgId, role: "assistant", content: execution.executedText, thinking: assistantThinking, model: selectedModel },
+                      ];
+                      setMessages(finalMessages);
+                      persistUpdatedChat(finalMessages, projectFiles);
+                    }
+                  );
+                  return;
+                } else if (execution?.executedText) {
+                  assistantContent = execution.executedText;
+                }
+              } catch (toolErr) {
+                console.error("Desktop tool execution error:", toolErr);
+              }
+            }
+          }
+
           setIsStreaming(false);
 
           // --- VFS File Parser ---
@@ -732,35 +1115,13 @@ export default function Chat() {
             const firstKey = Object.keys(updatedFiles)[0];
             if (firstKey) setSelectedCodeFile(firstKey);
           }
-          // -----------------------
-          // -----------------------
 
           const finalMessages = [
             ...newMessages,
             { id: assistantMsgId, role: "assistant", content: assistantContent, thinking: assistantThinking, model: selectedModel },
           ];
           setMessages(finalMessages);
-
-          setChats((prevChats) => {
-            const updated = prevChats.map((c) => {
-              if (c.id === activeChatId) {
-                const firstUserMsg = finalMessages.find((m) => m.role === "user");
-                const title = c.title === "Yangi suhbat" && firstUserMsg ? firstUserMsg.content.slice(0, 32) : c.title;
-                const updatedChat = {
-                  ...c,
-                  title,
-                  messages: finalMessages,
-                  model: selectedModel,
-                  projectFiles: filesChanged ? updatedFiles : c.projectFiles
-                };
-                saveUserChat(updatedChat);
-                return updatedChat;
-              }
-              return c;
-            });
-            try { localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(updated)); } catch { }
-            return updated;
-          });
+          persistUpdatedChat(finalMessages, filesChanged ? updatedFiles : projectFiles);
         },
         (errMsg) => {
           setIsStreaming(false);
@@ -947,7 +1308,7 @@ export default function Chat() {
                 const token = getAuthToken() || localStorage.getItem("oryxgen_auth_token") || localStorage.getItem("oryxgen_token") || "auth_success";
                 const userJson = encodeURIComponent(JSON.stringify(currentUser));
                 const deepLinkUrl = `oryxgen://auth?token=${encodeURIComponent(token)}&user=${userJson}`;
-                
+
                 try {
                   const iframe = document.createElement("iframe");
                   iframe.style.display = "none";
@@ -1271,138 +1632,138 @@ export default function Chat() {
                   const isExpanded = isLastStreaming ? true : !!thinkingExpandedMap[m.id];
                   const hasThinking = Boolean(msgThinking && msgThinking.trim().length > 0);
                   return (
-                  <div key={m.id} className={`message-row ${m.role}`}>
-                    <div className="message-avatar">
-                      {m.role === "user" ? (
-                        currentUser?.avatar ? (
-                          <img src={currentUser.avatar} alt="User" />
+                    <div key={m.id} className={`message-row ${m.role}`}>
+                      <div className="message-avatar">
+                        {m.role === "user" ? (
+                          currentUser?.avatar ? (
+                            <img src={currentUser.avatar} alt="User" />
+                          ) : (
+                            <div className="user-fallback-avatar">U</div>
+                          )
                         ) : (
-                          <div className="user-fallback-avatar">U</div>
-                        )
-                      ) : (
-                        <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
-                      )}
-                    </div>
+                          <CompanyLogo name={activeModelMeta.logoKey || activeModelMeta.company} size={18} />
+                        )}
+                      </div>
 
-                    <div className="message-bubble-wrapper">
-                      {/* Collapsible Reasoning Thinking Accordion */}
-                      {hasThinking && (
-                        <div className="thinking-accordion">
-                          <button
-                            type="button"
-                            className="thinking-toggle-header"
-                            onClick={() => setThinkingExpandedMap((prev) => ({ ...prev, [m.id]: !isExpanded }))}
-                          >
-                            <div className="thinking-status-indicator">
-                              <span className={`pulse-dot ${isLastStreaming ? "active" : ""}`} />
-                              <span>Mantiqiy tahlil jarayoni {isLastStreaming && `(${thinkingTime}s)`}</span>
-                            </div>
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="14"
-                              height="14"
-                              fill="currentColor"
-                              style={{ transform: isExpanded ? "rotate(180deg)" : "none" }}
+                      <div className="message-bubble-wrapper">
+                        {/* Collapsible Reasoning Thinking Accordion */}
+                        {hasThinking && (
+                          <div className="thinking-accordion">
+                            <button
+                              type="button"
+                              className="thinking-toggle-header"
+                              onClick={() => setThinkingExpandedMap((prev) => ({ ...prev, [m.id]: !isExpanded }))}
                             >
-                              <path d="M7 10l5 5 5-5z" />
-                            </svg>
-                          </button>
-                          {isExpanded && (
-                            <div className="thinking-body">
-                              <pre>{msgThinking}</pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {m.isCodexProgress && isStreaming ? (
-                        <div className="codex-generation-progress">
-                          <div className="codex-progress-phase">
-                            <span className="spinner-dot" />
-                            <span>{codexPhaseMsg || "Ishlanmoqda..."}</span>
-                          </div>
-                          {codexPlan && (
-                            <div className="codex-progress-filetree">
-                              <div className="codex-progress-filetree-title">
-                                {codexPlan.title} · {codexPlan.stack}
-                                {codexPlan.isFallbackTemplate && (
-                                  <span style={{ color: "#ef4444", marginLeft: "10px", fontSize: "11px", fontWeight: "bold" }}>⚠️ Standart Qolip</span>
-                                )}
+                              <div className="thinking-status-indicator">
+                                <span className={`pulse-dot ${isLastStreaming ? "active" : ""}`} />
+                                <span>Mantiqiy tahlil jarayoni {isLastStreaming && `(${thinkingTime}s)`}</span>
                               </div>
-                              {(codexPlan.files || []).map((f) => {
-                                const status = codexFileStatus[f.path] || "pending";
-                                return (
-                                  <div key={f.path} className={`codex-progress-file-row status-${status}`}>
-                                    <span className="codex-progress-file-icon">
-                                      {status === "pending" && "○"}
-                                      {status === "writing" && "◐"}
-                                      {status === "valid" && "●"}
-                                      {status === "fixed" && "◆"}
-                                    </span>
-                                    <span className="codex-progress-file-path">{f.path}</span>
-                                    <span className="codex-progress-file-label">
-                                      {status === "pending" && "Navbatda"}
-                                      {status === "writing" && "Yozilmoqda..."}
-                                      {status === "valid" && "Tayyor"}
-                                      {status === "fixed" && "Tuzatildi"}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="message-content">
-                          {msgContent.split("```").map((part, idx) => {
-                            if (idx % 2 === 1) {
-                              const lines = part.split("\n");
-                              const lang = lines[0].trim() || "code";
-                              const code = lines.slice(1).join("\n");
-                              const codeId = `${m.id}-${idx}`;
+                              <svg
+                                viewBox="0 0 24 24"
+                                width="14"
+                                height="14"
+                                fill="currentColor"
+                                style={{ transform: isExpanded ? "rotate(180deg)" : "none" }}
+                              >
+                                <path d="M7 10l5 5 5-5z" />
+                              </svg>
+                            </button>
+                            {isExpanded && (
+                              <div className="thinking-body">
+                                <pre>{msgThinking}</pre>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-                              if (isDirectoryTreeCode(code)) {
+                        {m.isCodexProgress && isStreaming ? (
+                          <div className="codex-generation-progress">
+                            <div className="codex-progress-phase">
+                              <span className="spinner-dot" />
+                              <span>{codexPhaseMsg || "Ishlanmoqda..."}</span>
+                            </div>
+                            {codexPlan && (
+                              <div className="codex-progress-filetree">
+                                <div className="codex-progress-filetree-title">
+                                  {codexPlan.title} · {codexPlan.stack}
+                                  {codexPlan.isFallbackTemplate && (
+                                    <span style={{ color: "#ef4444", marginLeft: "10px", fontSize: "11px", fontWeight: "bold" }}>⚠️ Standart Qolip</span>
+                                  )}
+                                </div>
+                                {(codexPlan.files || []).map((f) => {
+                                  const status = codexFileStatus[f.path] || "pending";
+                                  return (
+                                    <div key={f.path} className={`codex-progress-file-row status-${status}`}>
+                                      <span className="codex-progress-file-icon">
+                                        {status === "pending" && "○"}
+                                        {status === "writing" && "◐"}
+                                        {status === "valid" && "●"}
+                                        {status === "fixed" && "◆"}
+                                      </span>
+                                      <span className="codex-progress-file-path">{f.path}</span>
+                                      <span className="codex-progress-file-label">
+                                        {status === "pending" && "Navbatda"}
+                                        {status === "writing" && "Yozilmoqda..."}
+                                        {status === "valid" && "Tayyor"}
+                                        {status === "fixed" && "Tuzatildi"}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="message-content">
+                            {msgContent.split("```").map((part, idx) => {
+                              if (idx % 2 === 1) {
+                                const lines = part.split("\n");
+                                const lang = lines[0].trim() || "code";
+                                const code = lines.slice(1).join("\n");
+                                const codeId = `${m.id}-${idx}`;
+
+                                if (isDirectoryTreeCode(code)) {
+                                  return (
+                                    <StructureViewer
+                                      key={codeId}
+                                      code={code}
+                                      lang={lang}
+                                      codeId={codeId}
+                                      onCopy={copyCode}
+                                    />
+                                  );
+                                }
+
                                 return (
-                                  <StructureViewer
-                                    key={codeId}
-                                    code={code}
-                                    lang={lang}
-                                    codeId={codeId}
-                                    onCopy={copyCode}
-                                  />
+                                  <div key={codeId} className="code-block-box">
+                                    <div className="code-block-header">
+                                      <span className="code-lang">{lang}</span>
+                                      <button
+                                        type="button"
+                                        className="copy-code-btn"
+                                        onClick={() => copyCode(code, codeId)}
+                                      >
+                                        {copiedCodeId === codeId ? "Nusxalandi" : "Nusxalash"}
+                                      </button>
+                                    </div>
+                                    <pre className="code-block-pre">
+                                      <code>{code}</code>
+                                    </pre>
+                                  </div>
                                 );
                               }
-
                               return (
-                                <div key={codeId} className="code-block-box">
-                                  <div className="code-block-header">
-                                    <span className="code-lang">{lang}</span>
-                                    <button
-                                      type="button"
-                                      className="copy-code-btn"
-                                      onClick={() => copyCode(code, codeId)}
-                                    >
-                                      {copiedCodeId === codeId ? "Nusxalandi" : "Nusxalash"}
-                                    </button>
-                                  </div>
-                                  <pre className="code-block-pre">
-                                    <code>{code}</code>
-                                  </pre>
-                                </div>
+                                <div
+                                  key={idx}
+                                  className="text-prose"
+                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
+                                />
                               );
-                            }
-                            return (
-                              <div
-                                key={idx}
-                                className="text-prose"
-                                dangerouslySetInnerHTML={{ __html: renderMarkdown(part) }}
-                              />
-                            );
-                          })}
-                        </div>
-                      )}
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
                   );
                 })}
 
@@ -1415,6 +1776,25 @@ export default function Chat() {
 
           {/* Input Bar */}
           <div className="chat-input-bar">
+            {typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI) && attachedScreenshot && (
+              <div className="attached-screenshot-preview">
+                <div className="attached-screenshot-info">
+                  <span className="screenshot-icon">📸</span>
+                  <span className="screenshot-title">Ekran tasviri biriktirildi</span>
+                  {attachedScreenshot.ocrText && (
+                    <span className="ocr-badge">OCR: {attachedScreenshot.ocrText.slice(0, 35)}...</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="remove-screenshot-btn"
+                  onClick={() => setAttachedScreenshot(null)}
+                  title="O'chirish"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="input-box-wrapper">
               <div className="input-action-menu">
                 <button
@@ -1427,6 +1807,21 @@ export default function Chat() {
                     <path d="M12 5v14M5 12h14" />
                   </svg>
                 </button>
+
+                {typeof window !== "undefined" && Boolean(window.oryxgenDesktop || window.electronAPI) && (
+                  <button
+                    type="button"
+                    className={`action-screen-btn ${attachedScreenshot ? "has-screen" : ""}`}
+                    onClick={handleCaptureScreenVision}
+                    title="Ekranni ko'rish va matnini tahlil qilish (ChatGPT Work with Apps)"
+                    aria-label="Ekran tasvirini biriktirish"
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                  </button>
+                )}
 
                 {isModeMenuOpen && (
                   <div className="mode-popup-menu">
@@ -1655,7 +2050,7 @@ export default function Chat() {
                     try {
                       await updateUserSystemPrompt(systemPrompt);
                       setCurrentUser({ ...currentUser, default_system_prompt: systemPrompt });
-                    } catch(e) {}
+                    } catch (e) { }
                   }
                 }}
               >

@@ -109,18 +109,29 @@ async function pushViaServerApi() {
     const chunkData = fileBuffer.subarray(start, end);
 
     const url = `${SERVER_URL}/api/installer/upload-chunk?filename=${encodeURIComponent(FILENAME)}&chunk_index=${i}&total_chunks=${totalChunks}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "x-admin-secret": ADMIN_SECRET,
-      },
-      body: chunkData,
-    });
+    let uploaded = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "x-admin-secret": ADMIN_SECRET,
+          },
+          body: chunkData,
+        });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Chunk ${i} upload failed (${res.status}): ${errText}`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Chunk ${i} upload failed (${res.status}): ${errText}`);
+        }
+        uploaded = true;
+        break;
+      } catch (err) {
+        if (attempt === 3) throw err;
+        console.warn(`  ⚠️ Chunk ${i + 1} attempt ${attempt} failed: ${err.message}. Retrying...`);
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+      }
     }
 
     const percent = (((i + 1) / totalChunks) * 100).toFixed(1);

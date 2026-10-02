@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, shell, globalShortcut } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { execSync, spawn } = require("child_process");
@@ -110,6 +110,22 @@ function createWindow() {
     tray.setContextMenu(contextMenu);
     tray.on("double-click", () => { mainWindow.show(); mainWindow.focus(); });
   } catch { }
+
+  // ⌨️ Global Shortcut: Alt+Space (ChatGPT Desktop Summon Companion)
+  try {
+    globalShortcut.register("Alt+Space", () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible() && mainWindow.isFocused()) {
+          mainWindow.hide();
+        } else {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    });
+  } catch (err) {
+    console.warn("Global shortcut error:", err);
+  }
 
   mainWindow.on("close", (e) => {
     if (!app.isQuitting) {
@@ -324,5 +340,9 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+app.on("will-quit", () => {
+  try { globalShortcut.unregisterAll(); } catch {}
 });
 
