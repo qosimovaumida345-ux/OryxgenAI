@@ -245,15 +245,25 @@ app.get("/api/models", (_req, res) => {
 });
 
 function clientError(res, status, message) {
+  if (res.headersSent) {
+    try {
+      res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (_) {}
+    return;
+  }
   res.status(status).json({ error: message });
 }
 
 // Fallback streaming generator when no OpenRouter key is configured
 async function streamSimulatedResponse(res, meta, userMsg, systemPrompt = "") {
-  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders?.();
+  if (!res.headersSent) {
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+  }
 
   // Only emit thinking for designated reasoning/thinking models
   const isThinking = meta.tags?.includes("thinking") && meta.capability === "reason";
@@ -283,99 +293,285 @@ async function streamSimulatedResponse(res, meta, userMsg, systemPrompt = "") {
 
 // Chat completion streaming endpoint
 app.post("/api/chat", authMiddleware, async (req, res) => {
-  const { model: displayId, messages, systemPrompt } = req.body || {};
-  const meta = findModel(displayId);
-  if (!meta || meta.capability === "image") {
-    return clientError(res, 400, "Noma'lum yoki noto'g'ri model tanlangan.");
-  }
-  if (!Array.isArray(messages) || !messages.length) {
-    return clientError(res, 400, "Messages ro'yxati kiritilishi shart.");
-  }
+  try {
+    const { model: displayId, messages, systemPrompt } = req.body || {};
+    const meta = findModel(displayId);
+    if (!meta || meta.capability === "image") {
+      return clientError(res, 400, "Noma'lum yoki noto'g'ri model tanlangan.");
+    }
+    if (!Array.isArray(messages) || !messages.length) {
+      return clientError(res, 400, "Messages ro'yxati kiritilishi shart.");
+    }
 
-  // Mandatory Model Identity Persona
-  const modelPersona = `You are "${meta.displayName}" created by ${meta.company}. You are running inside Oryxgen AI platform (https://avg-ai-creator.site).
+    // Mandatory Model Identity Persona
+    const modelPersona = `You are "${meta.displayName}" created by ${meta.company}. You are running inside Oryxgen AI platform (https://avg-ai-creator.site).
 CRITICAL IDENTITY INSTRUCTIONS:
 - If the user asks who you are, what model you are, or who created you, you MUST ALWAYS answer: "I am ${meta.displayName} by ${meta.company}, running on Oryxgen AI."
 - NEVER reveal, mention, or hint at any underlying infrastructure names such as: Nemotron, Gemma, Qwen, LLaMA, OpenRouter, Pollinations, or any open-source backend model name.
 - You are NOT an open-source model. You are ${meta.displayName} by ${meta.company}.
 - Maintain this identity strictly and consistently in ALL languages (O'zbek, English, Russian, etc.).`;
 
-  const preparedMessages = [
-    { role: "system", content: modelPersona }
-  ];
+    let effectiveSystem = modelPersona;
+    if (systemPrompt && typeof systemPrompt === "string" && systemPrompt.trim()) {
+      effectiveSystem += `\n\n[Custom User Instructions]:\n${systemPrompt.trim()}`;
+    }
 
-  // Prepend custom system prompt if provided
-  if (systemPrompt && typeof systemPrompt === "string" && systemPrompt.trim()) {
-    preparedMessages.push({ role: "system", content: systemPrompt.trim() });
-  }
+    const safeMessages = [
+      { role: "system", content: effectiveSystem },
+      ...messages
+        .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+        .map((m) => {
+          if (m.image || Array.isArray(m.content)) {
+            if (Array.isArray(m.content)) {
+              return { role: m.role, content: m.content };
+            }
+            const textContent = String(m.content || "").slice(0, 32000);
+            const parts = [];
+            if (textContent) {
+              parts.push({ type: "text", text: textContent });
+            }
+            if (typeof m.image === "string" && (m.image.startsWith("data:") || m.image.startsWith("http"))) {
+              parts.push({
+                type: "image_url",
+                image_url: { url: m.image },
+              });
+            }
+            return { role: m.role, content: parts.length > 0 ? parts : textContent };
+          }
+          return { role: m.role, content: String(m.content || "").slice(0, 32000) };
+        })
+        .slice(-24),
+    ];
 
-  const safeMessages = [
-    ...preparedMessages,
-    ...messages
-      .filter((m) => m && (m.role === "user" || m.role === "assistant" || m.role === "system"))
-      .map((m) => {
-        if (m.image || Array.isArray(m.content)) {
-          if (Array.isArray(m.content)) {
-            return { role: m.role, content: m.content };
+    const lastUserMsgObj = safeMessages.filter((m) => m.role === "user").pop();
+    const lastUserMsg = Array.isArray(lastUserMsgObj?.content)
+      ? (lastUserMsgObj.content.find((p) => p.type === "text")?.text || "")
+      : (lastUserMsgObj?.content || "");
+
+    if (!OR_KEY && !GROQ_KEY && !NVIDIA_KEY) {
+      return streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
+    }
+
+    if (!res.headersSent) {
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
+    }
+
+    let streamSucceeded = false;
+
+    // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
+    // Powers ALL display models with Moonshot Kimi-K3 while strictly preserving the persona
+    // Note: Kimi K3 strictly fixes top_p at 0.95 and rejects top_p overrides. Do NOT pass top_p.
+    if (NVIDIA_KEY) {
+      try {
+        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL} (2.8T)`);
+        const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NVIDIA_KEY}`,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            model: NVIDIA_MODEL,
+            messages: safeMessages,
+            stream: true,
+            temperature: 0.6,
+            max_tokens: 4096,
+          }),
+        });
+
+        if (nvRes.ok && nvRes.body) {
+          const reader = nvRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let inThinkTag = false;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n");
+            buffer = parts.pop() || "";
+            for (const line of parts) {
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (!payload || payload === "[DONE]") continue;
+              try {
+                const json = JSON.parse(payload);
+                const delta = json.choices?.[0]?.delta;
+
+                const thinkingContent = delta?.reasoning_content || delta?.reasoning;
+                if (thinkingContent) {
+                  res.write(`data: ${JSON.stringify({ thinking: thinkingContent })}\n\n`);
+                }
+
+                let text = delta?.content || "";
+                if (text) {
+                  text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
+
+                  if (text.includes("<think>")) {
+                    inThinkTag = true;
+                    const [preThink, postThink] = text.split(/<think>/i);
+                    if (preThink) res.write(`data: ${JSON.stringify({ content: preThink })}\n\n`);
+                    text = postThink || "";
+                  }
+                  if (text.includes("</think>")) {
+                    inThinkTag = false;
+                    const [thinkPart, normalPart] = text.split(/<\/think>/i);
+                    if (thinkPart) res.write(`data: ${JSON.stringify({ thinking: thinkPart })}\n\n`);
+                    if (normalPart) res.write(`data: ${JSON.stringify({ content: normalPart })}\n\n`);
+                    continue;
+                  }
+
+                  if (inThinkTag) {
+                    res.write(`data: ${JSON.stringify({ thinking: text })}\n\n`);
+                  } else {
+                    res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+                  }
+                }
+              } catch {
+                /* ignore chunk parse error */
+              }
+            }
           }
-          const textContent = String(m.content || "").slice(0, 32000);
-          const parts = [];
-          if (textContent) {
-            parts.push({ type: "text", text: textContent });
-          }
-          if (typeof m.image === "string" && (m.image.startsWith("data:") || m.image.startsWith("http"))) {
-            parts.push({
-              type: "image_url",
-              image_url: { url: m.image },
-            });
-          }
-          return { role: m.role, content: parts.length > 0 ? parts : textContent };
+
+          streamSucceeded = true;
+          res.write("data: [DONE]\n\n");
+          res.end();
+          return;
+        } else {
+          const errText = await nvRes.text().catch(() => "");
+          console.warn(`[Chat API] NVIDIA NIM Kimi-K3 returned ${nvRes.status}:`, errText);
         }
-        return { role: m.role, content: String(m.content || "").slice(0, 32000) };
-      })
-      .slice(-24),
-  ];
+      } catch (err) {
+        console.warn("[Chat API] NVIDIA NIM Kimi-K3 connection error, falling back:", err.message);
+      }
+    }
 
-  const lastUserMsgObj = safeMessages.filter((m) => m.role === "user").pop();
-  const lastUserMsg = Array.isArray(lastUserMsgObj?.content)
-    ? (lastUserMsgObj.content.find((p) => p.type === "text")?.text || "")
-    : (lastUserMsgObj?.content || "");
-
-  if (!OR_KEY && !GROQ_KEY && !NVIDIA_KEY) {
-    return streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
-  }
-
-  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders?.();
-
-  let streamSucceeded = false;
-
-  // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
-  // Powers ALL display models with Moonshot Kimi-K3 while strictly preserving the persona
-  if (NVIDIA_KEY) {
-    try {
-      console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL} (2.8T)`);
-      const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NVIDIA_KEY}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
-        body: JSON.stringify({
-          model: NVIDIA_MODEL,
-          messages: safeMessages,
-          stream: true,
-          temperature: 0.6,
-          top_p: 0.7,
-          max_tokens: 4096,
-        }),
+    // Level 0: Try Groq LPU (Ultra-Fast 300+ tokens/sec)
+    if (GROQ_KEY) {
+      const hasImages = safeMessages.some((m) => {
+        if (Array.isArray(m.content)) {
+          return m.content.some((p) => p.type === "image_url");
+        }
+        return false;
       });
+      const groqModel = resolveGroqModel(displayId, hasImages);
+      try {
+        console.log(`[Chat API] Trying Groq LPU with model: ${groqModel}`);
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${GROQ_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: groqModel,
+            messages: safeMessages,
+            stream: true,
+            temperature: 0.7,
+          }),
+        });
 
-      if (nvRes.ok && nvRes.body) {
-        const reader = nvRes.body.getReader();
+        if (groqRes.ok && groqRes.body) {
+          const reader = groqRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let inThinkTag = false;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n");
+            buffer = parts.pop() || "";
+            for (const line of parts) {
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (!payload || payload === "[DONE]") continue;
+              try {
+                const json = JSON.parse(payload);
+                const delta = json.choices?.[0]?.delta;
+
+                const thinkingContent = delta?.reasoning_content || delta?.reasoning;
+                if (thinkingContent) {
+                  res.write(`data: ${JSON.stringify({ thinking: thinkingContent })}\n\n`);
+                }
+
+                let text = delta?.content || "";
+                if (text) {
+                  text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
+
+                  if (text.includes("<think>")) {
+                    inThinkTag = true;
+                    const [preThink, postThink] = text.split(/<think>/i);
+                    if (preThink) res.write(`data: ${JSON.stringify({ content: preThink })}\n\n`);
+                    text = postThink || "";
+                  }
+                  if (text.includes("</think>")) {
+                    inThinkTag = false;
+                    const [thinkPart, normalPart] = text.split(/<\/think>/i);
+                    if (thinkPart) res.write(`data: ${JSON.stringify({ thinking: thinkPart })}\n\n`);
+                    if (normalPart) res.write(`data: ${JSON.stringify({ content: normalPart })}\n\n`);
+                    continue;
+                  }
+
+                  if (inThinkTag) {
+                    res.write(`data: ${JSON.stringify({ thinking: text })}\n\n`);
+                  } else {
+                    res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+                  }
+                }
+              } catch {
+                /* ignore chunk parse error */
+              }
+            }
+          }
+
+          streamSucceeded = true;
+          res.write("data: [DONE]\n\n");
+          res.end();
+          return;
+        } else {
+          const errText = await groqRes.text().catch(() => "");
+          console.warn(`[Chat API] Groq LPU failed (${groqRes.status}):`, errText);
+        }
+      } catch (err) {
+        console.warn("[Chat API] Groq LPU error, falling back to OpenRouter:", err.message);
+      }
+    }
+
+    const chain = await resolveUpstream(meta.capability, displayId);
+
+    for (let i = 0; i < chain.length; i++) {
+      const upstream = chain[i];
+      try {
+        const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OR_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://avg-ai-creator.site",
+            "X-Title": "Oryxgen AI",
+          },
+          body: JSON.stringify({
+            model: upstream,
+            messages: safeMessages,
+            stream: true,
+          }),
+        });
+
+        if (orRes.status === 429 || orRes.status >= 500) {
+          continue;
+        }
+        if (!orRes.ok || !orRes.body) {
+          continue;
+        }
+
+        const reader = orRes.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
         let inThinkTag = false;
@@ -394,12 +590,14 @@ CRITICAL IDENTITY INSTRUCTIONS:
               const json = JSON.parse(payload);
               const delta = json.choices?.[0]?.delta;
 
-              if (delta?.reasoning) {
-                res.write(`data: ${JSON.stringify({ thinking: delta.reasoning })}\n\n`);
+              const thinkingContent = delta?.reasoning_content || delta?.reasoning;
+              if (thinkingContent) {
+                res.write(`data: ${JSON.stringify({ thinking: thinkingContent })}\n\n`);
               }
 
               let text = delta?.content || "";
               if (text) {
+                // Normalize thought tags to think tags
                 text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
 
                 if (text.includes("<think>")) {
@@ -432,199 +630,25 @@ CRITICAL IDENTITY INSTRUCTIONS:
         res.write("data: [DONE]\n\n");
         res.end();
         return;
-      } else {
-        const errText = await nvRes.text().catch(() => "");
-        console.warn(`[Chat API] NVIDIA NIM Kimi-K3 returned ${nvRes.status}:`, errText);
+      } catch {
+        // Continue to fallback
       }
-    } catch (err) {
-      console.warn("[Chat API] NVIDIA NIM Kimi-K3 connection error, falling back:", err.message);
     }
-  }
 
-  // Level 0: Try Groq LPU (Ultra-Fast 300+ tokens/sec)
-  if (GROQ_KEY) {
-    const hasImages = safeMessages.some((m) => {
-      if (Array.isArray(m.content)) {
-        return m.content.some((p) => p.type === "image_url");
-      }
-      return false;
-    });
-    const groqModel = resolveGroqModel(displayId, hasImages);
-    try {
-      console.log(`[Chat API] Trying Groq LPU with model: ${groqModel}`);
-      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${GROQ_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: groqModel,
-          messages: safeMessages,
-          stream: true,
-          temperature: 0.7,
-        }),
-      });
-
-      if (groqRes.ok && groqRes.body) {
-        const reader = groqRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let inThinkTag = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n");
-          buffer = parts.pop() || "";
-          for (const line of parts) {
-            if (!line.startsWith("data:")) continue;
-            const payload = line.slice(5).trim();
-            if (!payload || payload === "[DONE]") continue;
-            try {
-              const json = JSON.parse(payload);
-              const delta = json.choices?.[0]?.delta;
-
-              if (delta?.reasoning) {
-                res.write(`data: ${JSON.stringify({ thinking: delta.reasoning })}\n\n`);
-              }
-
-              let text = delta?.content || "";
-              if (text) {
-                text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
-
-                if (text.includes("<think>")) {
-                  inThinkTag = true;
-                  const [preThink, postThink] = text.split(/<think>/i);
-                  if (preThink) res.write(`data: ${JSON.stringify({ content: preThink })}\n\n`);
-                  text = postThink || "";
-                }
-                if (text.includes("</think>")) {
-                  inThinkTag = false;
-                  const [thinkPart, normalPart] = text.split(/<\/think>/i);
-                  if (thinkPart) res.write(`data: ${JSON.stringify({ thinking: thinkPart })}\n\n`);
-                  if (normalPart) res.write(`data: ${JSON.stringify({ content: normalPart })}\n\n`);
-                  continue;
-                }
-
-                if (inThinkTag) {
-                  res.write(`data: ${JSON.stringify({ thinking: text })}\n\n`);
-                } else {
-                  res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
-                }
-              }
-            } catch {
-              /* ignore chunk parse error */
-            }
-          }
-        }
-
-        streamSucceeded = true;
+    if (!streamSucceeded) {
+      await streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
+    }
+  } catch (fatalErr) {
+    console.error("[Chat API Fatal Error]:", fatalErr);
+    if (!res.headersSent) {
+      clientError(res, 500, "Ichki server xatoligi");
+    } else {
+      try {
+        res.write(`data: ${JSON.stringify({ content: "\n\n*[Serverda vaqtinchalik xatolik yuz berdi. Iltimos qaytadan yuboring]*" })}\n\n`);
         res.write("data: [DONE]\n\n");
         res.end();
-        return;
-      } else {
-        const errText = await groqRes.text().catch(() => "");
-        console.warn(`[Chat API] Groq LPU failed (${groqRes.status}):`, errText);
-      }
-    } catch (err) {
-      console.warn("[Chat API] Groq LPU error, falling back to OpenRouter:", err.message);
+      } catch (_) {}
     }
-  }
-
-  const chain = await resolveUpstream(meta.capability, displayId);
-
-  for (let i = 0; i < chain.length; i++) {
-    const upstream = chain[i];
-    try {
-      const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OR_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://avg-ai-creator.site",
-          "X-Title": "Oryxgen AI",
-        },
-        body: JSON.stringify({
-          model: upstream,
-          messages: safeMessages,
-          stream: true,
-        }),
-      });
-
-      if (orRes.status === 429 || orRes.status >= 500) {
-        continue;
-      }
-      if (!orRes.ok || !orRes.body) {
-        continue;
-      }
-
-      const reader = orRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let inThinkTag = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n");
-        buffer = parts.pop() || "";
-        for (const line of parts) {
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (!payload || payload === "[DONE]") continue;
-          try {
-            const json = JSON.parse(payload);
-            const delta = json.choices?.[0]?.delta;
-
-            if (delta?.reasoning) {
-              res.write(`data: ${JSON.stringify({ thinking: delta.reasoning })}\n\n`);
-            }
-
-            let text = delta?.content || "";
-            if (text) {
-              // Normalize thought tags to think tags
-              text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
-
-              if (text.includes("<think>")) {
-                inThinkTag = true;
-                const [preThink, postThink] = text.split(/<think>/i);
-                if (preThink) res.write(`data: ${JSON.stringify({ content: preThink })}\n\n`);
-                text = postThink || "";
-              }
-              if (text.includes("</think>")) {
-                inThinkTag = false;
-                const [thinkPart, normalPart] = text.split(/<\/think>/i);
-                if (thinkPart) res.write(`data: ${JSON.stringify({ thinking: thinkPart })}\n\n`);
-                if (normalPart) res.write(`data: ${JSON.stringify({ content: normalPart })}\n\n`);
-                continue;
-              }
-
-              if (inThinkTag) {
-                res.write(`data: ${JSON.stringify({ thinking: text })}\n\n`);
-              } else {
-                res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
-              }
-            }
-          } catch {
-            /* ignore chunk parse error */
-          }
-        }
-      }
-
-      streamSucceeded = true;
-      res.write("data: [DONE]\n\n");
-      res.end();
-      return;
-    } catch {
-      // Continue to fallback
-    }
-  }
-
-  if (!streamSucceeded) {
-    await streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
   }
 });
 
