@@ -44,6 +44,8 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
+const NVIDIA_KEY = process.env.NVIDIA_API_KEY || "";
+const NVIDIA_MODEL = "moonshotai/kimi-k3";
 
 // ── GROQ LPU MODEL RESOLVER ──
 export function resolveGroqModel(requestedModel = "", hasImages = false) {
@@ -339,7 +341,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
     ? (lastUserMsgObj.content.find((p) => p.type === "text")?.text || "")
     : (lastUserMsgObj?.content || "");
 
-  if (!OR_KEY && !GROQ_KEY) {
+  if (!OR_KEY && !GROQ_KEY && !NVIDIA_KEY) {
     return streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
   }
 
@@ -349,6 +351,95 @@ CRITICAL IDENTITY INSTRUCTIONS:
   res.flushHeaders?.();
 
   let streamSucceeded = false;
+
+  // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
+  // Powers ALL display models with Moonshot Kimi-K3 while strictly preserving the persona
+  if (NVIDIA_KEY) {
+    try {
+      console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL} (2.8T)`);
+      const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NVIDIA_KEY}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          model: NVIDIA_MODEL,
+          messages: safeMessages,
+          stream: true,
+          temperature: 0.6,
+          top_p: 0.7,
+          max_tokens: 4096,
+        }),
+      });
+
+      if (nvRes.ok && nvRes.body) {
+        const reader = nvRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let inThinkTag = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n");
+          buffer = parts.pop() || "";
+          for (const line of parts) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === "[DONE]") continue;
+            try {
+              const json = JSON.parse(payload);
+              const delta = json.choices?.[0]?.delta;
+
+              if (delta?.reasoning) {
+                res.write(`data: ${JSON.stringify({ thinking: delta.reasoning })}\n\n`);
+              }
+
+              let text = delta?.content || "";
+              if (text) {
+                text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
+
+                if (text.includes("<think>")) {
+                  inThinkTag = true;
+                  const [preThink, postThink] = text.split(/<think>/i);
+                  if (preThink) res.write(`data: ${JSON.stringify({ content: preThink })}\n\n`);
+                  text = postThink || "";
+                }
+                if (text.includes("</think>")) {
+                  inThinkTag = false;
+                  const [thinkPart, normalPart] = text.split(/<\/think>/i);
+                  if (thinkPart) res.write(`data: ${JSON.stringify({ thinking: thinkPart })}\n\n`);
+                  if (normalPart) res.write(`data: ${JSON.stringify({ content: normalPart })}\n\n`);
+                  continue;
+                }
+
+                if (inThinkTag) {
+                  res.write(`data: ${JSON.stringify({ thinking: text })}\n\n`);
+                } else {
+                  res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+                }
+              }
+            } catch {
+              /* ignore chunk parse error */
+            }
+          }
+        }
+
+        streamSucceeded = true;
+        res.write("data: [DONE]\n\n");
+        res.end();
+        return;
+      } else {
+        const errText = await nvRes.text().catch(() => "");
+        console.warn(`[Chat API] NVIDIA NIM Kimi-K3 returned ${nvRes.status}:`, errText);
+      }
+    } catch (err) {
+      console.warn("[Chat API] NVIDIA NIM Kimi-K3 connection error, falling back:", err.message);
+    }
+  }
 
   // Level 0: Try Groq LPU (Ultra-Fast 300+ tokens/sec)
   if (GROQ_KEY) {
@@ -1629,6 +1720,71 @@ CRITICAL IDENTITY INSTRUCTIONS:
     let fullGeneratedText = "";
     let streamSuccess = false;
 
+    // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
+    if (NVIDIA_KEY) {
+      try {
+        console.log(`[OpenAI Gateway Stream] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${NVIDIA_MODEL}`);
+        const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NVIDIA_KEY}`,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({
+            model: NVIDIA_MODEL,
+            messages: finalMessages,
+            temperature,
+            max_tokens: targetTokens,
+            stream: true,
+          }),
+        });
+
+        if (nvRes.ok && nvRes.body) {
+          const reader = nvRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith("data: ")) {
+                const dataStr = trimmed.slice(6);
+                if (dataStr === "[DONE]") {
+                  res.write("data: [DONE]\n\n");
+                } else {
+                  try {
+                    const parsed = JSON.parse(dataStr);
+                    if (parsed.model) parsed.model = catalogModel.id;
+                    const deltaContent = parsed.choices?.[0]?.delta?.content || "";
+                    if (deltaContent) fullGeneratedText += deltaContent;
+                    res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+                  } catch {
+                    res.write(`${trimmed}\n\n`);
+                  }
+                }
+              }
+            }
+          }
+          streamSuccess = true;
+          res.end();
+          return;
+        } else {
+          const errText = await nvRes.text().catch(() => "");
+          console.warn(`[OpenAI Gateway Stream] NVIDIA NIM failed (${nvRes.status}):`, errText);
+        }
+      } catch (err) {
+        console.warn("[OpenAI Gateway Stream] NVIDIA NIM error, falling back:", err.message);
+      }
+    }
+
     // Level 0: Try Groq LPU (Ultra-Fast 300+ tokens/sec)
     if (GROQ_KEY) {
       try {
@@ -1878,8 +2034,38 @@ CRITICAL IDENTITY INSTRUCTIONS:
   let completionContent = "";
   let lastErr = null;
 
+  // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
+  if (NVIDIA_KEY) {
+    try {
+      console.log(`[OpenAI Gateway Sync] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${NVIDIA_MODEL}`);
+      const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NVIDIA_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: NVIDIA_MODEL,
+          messages: finalMessages,
+          temperature,
+          max_tokens: targetTokens,
+        }),
+      });
+
+      if (nvRes.ok) {
+        const data = await nvRes.json();
+        completionContent = data.choices?.[0]?.message?.content || "";
+      } else {
+        const errText = await nvRes.text().catch(() => "");
+        console.warn(`[OpenAI Gateway Sync] NVIDIA NIM failed (${nvRes.status}):`, errText);
+      }
+    } catch (err) {
+      console.warn("[OpenAI Gateway Sync] NVIDIA NIM error, falling back:", err.message);
+    }
+  }
+
   // Level 0: Try Groq LPU (Ultra-Fast 300+ tokens/sec)
-  if (GROQ_KEY) {
+  if (!completionContent && GROQ_KEY) {
     try {
       const hasImages = finalMessages.some((m) => {
         if (Array.isArray(m.content)) {
@@ -2060,6 +2246,158 @@ CRITICAL IDENTITY RULES:
 
     // Prepend brand identity to the system prompt
     const effectiveSystem = brandIdentity + (system ? "\n\n" + (typeof system === "string" ? system : JSON.stringify(system)) : "");
+
+    // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
+    // Powers Claude Desktop with Moonshot Kimi-K3 while strictly preserving the Claude persona
+    if (NVIDIA_KEY) {
+      try {
+        const nvMessages = [
+          { role: "system", content: effectiveSystem }
+        ];
+        for (const m of messages) {
+          if (Array.isArray(m.content)) {
+            const parts = [];
+            for (const part of m.content) {
+              if (part.type === "text") {
+                parts.push({ type: "text", text: part.text });
+              } else if (part.type === "image" && part.source) {
+                const mime = part.source.media_type || "image/jpeg";
+                parts.push({
+                  type: "image_url",
+                  image_url: { url: `data:${mime};base64,${part.source.data}` },
+                });
+              }
+            }
+            nvMessages.push({ role: m.role, content: parts });
+          } else {
+            nvMessages.push({ role: m.role, content: m.content || "" });
+          }
+        }
+
+        console.log(`[Messages API] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${NVIDIA_MODEL} (stream: ${stream})`);
+
+        const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NVIDIA_KEY}`,
+            "Content-Type": "application/json",
+            Accept: stream ? "text/event-stream" : "application/json",
+          },
+          body: JSON.stringify({
+            model: NVIDIA_MODEL,
+            messages: nvMessages,
+            max_tokens,
+            temperature,
+            stream: Boolean(stream),
+          }),
+        });
+
+        if (nvRes.ok && nvRes.body) {
+          if (stream) {
+            res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+            res.setHeader("Cache-Control", "no-cache, no-transform");
+            res.setHeader("Connection", "keep-alive");
+            res.flushHeaders?.();
+
+            const msgId = `msg_${Date.now()}`;
+            res.write(`event: message_start\ndata: ${JSON.stringify({
+              type: "message_start",
+              message: {
+                id: msgId,
+                type: "message",
+                role: "assistant",
+                content: [],
+                model: catalogModel.displayName,
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 15, output_tokens: 1 }
+              }
+            })}\n\n`);
+
+            res.write(`event: content_block_start\ndata: ${JSON.stringify({
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "text", text: "" }
+            })}\n\n`);
+
+            const reader = nvRes.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let generatedTokens = 0;
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith("data: ")) {
+                  const dataStr = trimmed.slice(6);
+                  if (dataStr === "[DONE]") continue;
+                  try {
+                    const parsed = JSON.parse(dataStr);
+                    const chunkText = parsed.choices?.[0]?.delta?.content || "";
+                    if (chunkText) {
+                      generatedTokens++;
+                      res.write(`event: content_block_delta\ndata: ${JSON.stringify({
+                        type: "content_block_delta",
+                        index: 0,
+                        delta: { type: "text_delta", text: chunkText }
+                      })}\n\n`);
+                    }
+                  } catch {
+                    /* ignore chunk parse */
+                  }
+                }
+              }
+            }
+
+            res.write(`event: content_block_stop\ndata: ${JSON.stringify({
+              type: "content_block_stop",
+              index: 0
+            })}\n\n`);
+
+            res.write(`event: message_delta\ndata: ${JSON.stringify({
+              type: "message_delta",
+              delta: { stop_reason: "end_turn", stop_sequence: null },
+              usage: { output_tokens: generatedTokens || 20 }
+            })}\n\n`);
+
+            res.write(`event: message_stop\ndata: ${JSON.stringify({
+              type: "message_stop"
+            })}\n\n`);
+
+            res.end();
+            return;
+          } else {
+            const data = await nvRes.json();
+            const outText = data.choices?.[0]?.message?.content || "";
+            res.json({
+              id: `msg_${Date.now()}`,
+              type: "message",
+              role: "assistant",
+              model: catalogModel.displayName,
+              content: [{ type: "text", text: outText }],
+              stop_reason: "end_turn",
+              usage: {
+                input_tokens: data.usage?.prompt_tokens || 20,
+                output_tokens: data.usage?.completion_tokens || 50,
+              },
+            });
+            return;
+          }
+        } else {
+          const errText = await nvRes.text().catch(() => "");
+          console.warn(`[Messages API] NVIDIA NIM Kimi-K3 returned ${nvRes.status}:`, errText);
+        }
+      } catch (err) {
+        console.warn("[Messages API] NVIDIA NIM Kimi-K3 connection error, falling back:", err.message);
+      }
+    }
 
     // ── TRY GROQ LPU FIRST FOR ULTRA-FAST CLAUDE DESKTOP RESPONSES ──
     if (GROQ_KEY) {

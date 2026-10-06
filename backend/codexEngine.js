@@ -3,6 +3,34 @@ import { resolveBestCodeModel, getModelMaxTokens } from "./mapper.js";
 
 // Helper to call OpenRouter with failover across ranked models, unleashing each model's TRUE MAXIMUM capacity
 async function callOpenRouter(messages, openRouterKey, temperature = 0.2, requestedMaxTokens = null) {
+  const nvidiaKey = process.env.NVIDIA_API_KEY;
+  if (nvidiaKey) {
+    try {
+      console.log("[CodeX Engine] Generating full project with NVIDIA NIM: moonshotai/kimi-k3 (2.8T)");
+      const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${nvidiaKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "moonshotai/kimi-k3",
+          messages,
+          temperature,
+          max_tokens: requestedMaxTokens || 16384,
+        }),
+      });
+
+      if (nvRes.ok) {
+        const data = await nvRes.json();
+        const text = data.choices?.[0]?.message?.content || "";
+        if (text && text.trim()) return text;
+      }
+    } catch (err) {
+      console.warn("[CodeX Engine] NVIDIA NIM attempt failed, falling back:", err.message);
+    }
+  }
+
   const groqKey = process.env.GROQ_API_KEY;
   if (groqKey) {
     try {
