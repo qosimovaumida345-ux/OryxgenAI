@@ -232,6 +232,8 @@ app.get("/health", (_req, res) => {
     modelsCount: PUBLIC_MODELS.length,
     imageModelsCount: PUBLIC_IMAGE_MODELS.length,
     hasOpenRouterKey: Boolean(OR_KEY),
+    hasNvidiaKey: Boolean(NVIDIA_KEY),
+    hasGroqKey: Boolean(GROQ_KEY),
     time: new Date().toISOString(),
   });
 });
