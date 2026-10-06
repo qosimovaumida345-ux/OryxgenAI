@@ -47,6 +47,22 @@ const GROQ_KEY = process.env.GROQ_API_KEY || "";
 const NVIDIA_KEY = process.env.NVIDIA_API_KEY || "";
 const NVIDIA_MODEL = "moonshotai/kimi-k3";
 
+// ── SANITIZE KIMI-K3 / MODEL OUTPUT ──
+// Strips leaked special tokens (<|close|>, <|im_end|>, etc.) and detects degenerate repetitive garbage
+const SPECIAL_TOKEN_RE = /<\|[a-z_]+\|>/gi;
+function sanitizeModelOutput(text) {
+  if (!text) return "";
+  return text.replace(SPECIAL_TOKEN_RE, "").replace(/\s{3,}/g, " ");
+}
+function isDegenerate(text, window = 60) {
+  // Detect repetitive patterns like "5. 5. 5. 5. 5." or "the the the the"
+  if (!text || text.length < window) return false;
+  const tail = text.slice(-window);
+  // Check if more than 60% of the tail is a repeated 2-4 char pattern
+  const m = tail.match(/(.{2,4})\1{5,}/);
+  return !!m;
+}
+
 // ── GROQ LPU MODEL RESOLVER ──
 export function resolveGroqModel(requestedModel = "", hasImages = false) {
   if (hasImages) {
@@ -327,7 +343,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
             if (Array.isArray(m.content)) {
               return { role: m.role, content: m.content };
             }
-            const textContent = String(m.content || "").slice(0, 32000);
+            const textContent = String(m.content || "");
             const parts = [];
             if (textContent) {
               parts.push({ type: "text", text: textContent });
@@ -340,15 +356,19 @@ CRITICAL IDENTITY INSTRUCTIONS:
             }
             return { role: m.role, content: parts.length > 0 ? parts : textContent };
           }
-          return { role: m.role, content: String(m.content || "").slice(0, 32000) };
+          return { role: m.role, content: String(m.content || "") };
         })
-        .slice(-24),
+        .slice(-120),
     ];
 
     const lastUserMsgObj = safeMessages.filter((m) => m.role === "user").pop();
     const lastUserMsg = Array.isArray(lastUserMsgObj?.content)
       ? (lastUserMsgObj.content.find((p) => p.type === "text")?.text || "")
       : (lastUserMsgObj?.content || "");
+
+    const clientMaxTokens = Number(req.body?.max_tokens || req.body?.maxTokens);
+    const effectiveMaxTokens = clientMaxTokens && clientMaxTokens > 0 ? clientMaxTokens : 16384;
+    const effectiveTemperature = typeof req.body?.temperature === "number" ? req.body.temperature : 0.7;
 
     if (!OR_KEY && !GROQ_KEY && !NVIDIA_KEY) {
       return streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
@@ -366,9 +386,10 @@ CRITICAL IDENTITY INSTRUCTIONS:
     // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
     // Powers ALL display models with Moonshot Kimi-K3 while strictly preserving the persona
     // Note: Kimi K3 strictly fixes top_p at 0.95 and rejects top_p overrides. Do NOT pass top_p.
+    // Max tokens set to 16,384 (NVIDIA NIM official ceiling) to provide generous room for reasoning + answer.
     if (NVIDIA_KEY) {
       try {
-        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL} (2.8T)`);
+        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL} (2.8T) with max_tokens=${effectiveMaxTokens}`);
         const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -380,8 +401,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
             model: NVIDIA_MODEL,
             messages: safeMessages,
             stream: true,
-            temperature: 0.6,
-            max_tokens: 4096,
+            temperature: effectiveTemperature,
+            max_tokens: effectiveMaxTokens,
           }),
         });
 
@@ -390,6 +411,9 @@ CRITICAL IDENTITY INSTRUCTIONS:
           const decoder = new TextDecoder();
           let buffer = "";
           let inThinkTag = false;
+          let accumulatedContent = "";
+          let accumulatedThinking = "";
+          let nvAborted = false;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -398,6 +422,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
             const parts = buffer.split("\n");
             buffer = parts.pop() || "";
             for (const line of parts) {
+              if (nvAborted) break;
               if (!line.startsWith("data:")) continue;
               const payload = line.slice(5).trim();
               if (!payload || payload === "[DONE]") continue;
@@ -405,13 +430,33 @@ CRITICAL IDENTITY INSTRUCTIONS:
                 const json = JSON.parse(payload);
                 const delta = json.choices?.[0]?.delta;
 
-                const thinkingContent = delta?.reasoning_content || delta?.reasoning;
+                let thinkingContent = delta?.reasoning_content || delta?.reasoning || "";
                 if (thinkingContent) {
-                  res.write(`data: ${JSON.stringify({ thinking: thinkingContent })}\n\n`);
+                  thinkingContent = sanitizeModelOutput(thinkingContent);
+                  accumulatedThinking += thinkingContent;
+                  // Check for degenerate thinking output
+                  if (isDegenerate(accumulatedThinking)) {
+                    console.warn("[Chat API] NVIDIA NIM Kimi-K3 producing degenerate thinking, aborting");
+                    nvAborted = true;
+                    try { reader.cancel(); } catch(_) {}
+                    break;
+                  }
+                  if (thinkingContent.trim()) {
+                    res.write(`data: ${JSON.stringify({ thinking: thinkingContent })}\n\n`);
+                  }
                 }
 
-                let text = delta?.content || "";
+                let text = sanitizeModelOutput(delta?.content || "");
                 if (text) {
+                  accumulatedContent += text;
+                  // Check for degenerate content output
+                  if (isDegenerate(accumulatedContent)) {
+                    console.warn("[Chat API] NVIDIA NIM Kimi-K3 producing degenerate content, aborting");
+                    nvAborted = true;
+                    try { reader.cancel(); } catch(_) {}
+                    break;
+                  }
+
                   text = text.replace(/<thought>/gi, "<think>").replace(/<\/thought>/gi, "</think>");
 
                   if (text.includes("<think>")) {
@@ -438,12 +483,17 @@ CRITICAL IDENTITY INSTRUCTIONS:
                 /* ignore chunk parse error */
               }
             }
+            if (nvAborted) break;
           }
 
-          streamSucceeded = true;
-          res.write("data: [DONE]\n\n");
-          res.end();
-          return;
+          if (!nvAborted) {
+            streamSucceeded = true;
+            res.write("data: [DONE]\n\n");
+            res.end();
+            return;
+          } else {
+            console.warn("[Chat API] NVIDIA NIM aborted due to degenerate output, falling back to next provider");
+          }
         } else {
           const errText = await nvRes.text().catch(() => "");
           console.warn(`[Chat API] NVIDIA NIM Kimi-K3 returned ${nvRes.status}:`, errText);
@@ -1734,7 +1784,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
 
   // Resolve upstream fallback models
   const modelChain = await resolveUpstream(catalogModel.capability || "chat", requestedModel);
-  let targetTokens = max_tokens || getModelMaxTokens(modelChain[0] || requestedModel);
+  let targetTokens = Number(max_tokens) || Math.max(getModelMaxTokens(modelChain[0] || requestedModel), 16384);
 
   // If streaming is requested
   if (stream) {
@@ -2236,7 +2286,7 @@ app.post(["/v1/messages", "/api/v1/messages", "/messages", "/v1/v1/messages"], a
       model: requestedModel = "claude-sonnet-5.5",
       messages = [],
       system = "",
-      max_tokens = 4096,
+      max_tokens = 16384,
       temperature = 0.7,
       stream = false,
       tools = undefined,
