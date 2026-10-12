@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: Its the rules when i used in antigravity ide so read it and know it so you dont break it !
+---
+
 # Oryxgen AI — Workspace System Directives
 
 ## 1. Absolute Code Integrity
