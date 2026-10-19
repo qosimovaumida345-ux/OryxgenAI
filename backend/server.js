@@ -255,27 +255,33 @@ app.get("/health", (_req, res) => {
   });
 });
 
-// Diagnostic endpoint to test NVIDIA NIM directly and list models
-app.get("/api/test-nvidia", async (_req, res) => {
+// Diagnostic endpoint to test NVIDIA NIM directly and test generation
+app.get("/api/test-nvidia", async (req, res) => {
   try {
     if (!NVIDIA_KEY) {
       return res.status(500).json({ error: "NVIDIA_KEY mavjud emas" });
     }
-    const listRes = await fetch("https://integrate.api.nvidia.com/v1/models", {
+    const testModel = req.query.model || "moonshotai/kimi-k2.6";
+    const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${NVIDIA_KEY}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        model: testModel,
+        messages: [{ role: "user", content: "Hello! Answer with one short sentence." }],
+        max_tokens: 64,
+        temperature: 0.7,
+      }),
     });
-    if (!listRes.ok) {
-      const errText = await listRes.text();
-      return res.status(listRes.status).json({ error: "NVIDIA models list failed", details: errText });
-    }
-    const data = await listRes.json();
-    const modelIds = (data.data || []).map((m) => m.id);
+    const status = nvRes.status;
+    const body = await nvRes.text();
     res.json({
-      count: modelIds.length,
-      sample: modelIds.slice(0, 30),
-      reasoningOrMoE: modelIds.filter(id => id.includes("reason") || id.includes("kimi") || id.includes("nemotron") || id.includes("deepseek") || id.includes("qwen") || id.includes("llama")),
+      model: testModel,
+      status,
+      ok: nvRes.ok,
+      body: (() => { try { return JSON.parse(body); } catch { return body; } })(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
