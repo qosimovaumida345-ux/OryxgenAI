@@ -47,20 +47,24 @@ const GROQ_KEY = process.env.GROQ_API_KEY || "";
 const NVIDIA_KEY = process.env.NVIDIA_API_KEY || "";
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "nvidia/nemotron-3-ultra-550b-a55b";
 
-// ── SANITIZE KIMI-K3 / MODEL OUTPUT ──
-// Strips leaked special tokens (<|close|>, <|im_end|>, etc.) and detects degenerate repetitive garbage
-const SPECIAL_TOKEN_RE = /<\|[a-z_]+\|>/gi;
-function sanitizeModelOutput(text) {
-  if (!text) return "";
-  return text.replace(SPECIAL_TOKEN_RE, "").replace(/\s{3,}/g, " ");
-}
-function isDegenerate(text, window = 60) {
-  // Detect repetitive patterns like "5. 5. 5. 5. 5." or "the the the the"
-  if (!text || text.length < window) return false;
-  const tail = text.slice(-window);
-  // Check if more than 60% of the tail is a repeated 2-4 char pattern
-  const m = tail.match(/(.{2,4})\1{5,}/);
-  return !!m;
+// ── DYNAMIC NVIDIA NIM MODEL RESOLVER ──
+// Routes requests to the best verified NVIDIA model based on user selection & capabilities
+export function resolveNvidiaModel(requestedModel = "", capability = "chat", hasImages = false) {
+  if (hasImages || capability === "vision") {
+    return "nvidia/nemotron-3.5-super-vl-120b-a12b"; // 120B Multimodal Vision Flagship
+  }
+  const lower = (requestedModel || "").toLowerCase();
+  if (lower.includes("code") || lower.includes("codex") || lower.includes("sonnet") || capability === "code") {
+    return "nvidia/nemotron-3-super-120b-a12b"; // 120B Autonomous Software Engineering & Agentic Coding
+  }
+  if (lower.includes("opus") || lower.includes("reason") || lower.includes("o1") || lower.includes("o3") || capability === "reason") {
+    return "nvidia/nemotron-3-ultra-550b-a55b"; // 550B MoE Deep Reasoning & Deliberation Flagship
+  }
+  if (lower.includes("fast") || lower.includes("flash") || lower.includes("haiku") || lower.includes("mini")) {
+    return "nvidia/nemotron-3.5-lightning-30b-a3b"; // 30B Ultra-fast Sub-50ms Low-latency Engine
+  }
+  // Default to 550B Ultra Flagship
+  return NVIDIA_MODEL || "nvidia/nemotron-3-ultra-550b-a55b";
 }
 
 // ── GROQ LPU MODEL RESOLVER ──
@@ -388,8 +392,15 @@ CRITICAL IDENTITY INSTRUCTIONS:
     // Note: Kimi K3 strictly fixes top_p at 0.95 and rejects top_p overrides. Do NOT pass top_p.
     // Max tokens set to 16,384 (NVIDIA NIM official ceiling) to provide generous room for reasoning + answer.
     if (NVIDIA_KEY) {
+      const hasImages = safeMessages.some((m) => {
+        if (Array.isArray(m.content)) {
+          return m.content.some((p) => p.type === "image_url");
+        }
+        return false;
+      });
+      const chosenNvModel = resolveNvidiaModel(displayId, meta.capability, hasImages);
       try {
-        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL}`);
+        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${chosenNvModel}`);
         const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -398,7 +409,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
             Accept: "text/event-stream",
           },
           body: JSON.stringify({
-            model: NVIDIA_MODEL,
+            model: chosenNvModel,
             messages: safeMessages,
             stream: true,
             temperature: 0.7,
@@ -434,9 +445,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
                 if (thinkingContent) {
                   thinkingContent = sanitizeModelOutput(thinkingContent);
                   accumulatedThinking += thinkingContent;
-                  // Check for degenerate thinking output
                   if (isDegenerate(accumulatedThinking)) {
-                    console.warn("[Chat API] NVIDIA NIM Kimi-K3 producing degenerate thinking, aborting");
+                    console.warn("[Chat API] NVIDIA NIM producing degenerate thinking, aborting");
                     nvAborted = true;
                     try { reader.cancel(); } catch(_) {}
                     break;
@@ -449,9 +459,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
                 let text = sanitizeModelOutput(delta?.content || "");
                 if (text) {
                   accumulatedContent += text;
-                  // Check for degenerate content output
                   if (isDegenerate(accumulatedContent)) {
-                    console.warn("[Chat API] NVIDIA NIM Kimi-K3 producing degenerate content, aborting");
+                    console.warn("[Chat API] NVIDIA NIM producing degenerate content, aborting");
                     nvAborted = true;
                     try { reader.cancel(); } catch(_) {}
                     break;
@@ -1804,8 +1813,15 @@ CRITICAL IDENTITY INSTRUCTIONS:
 
     // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
     if (NVIDIA_KEY) {
+      const hasImages = finalMessages.some((m) => {
+        if (Array.isArray(m.content)) {
+          return m.content.some((p) => p.type === "image_url");
+        }
+        return false;
+      });
+      const chosenNvModel = resolveNvidiaModel(requestedModel, catalogModel.capability, hasImages);
       try {
-        console.log(`[OpenAI Gateway Stream] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${NVIDIA_MODEL}`);
+        console.log(`[OpenAI Gateway Stream] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${chosenNvModel}`);
         const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -1814,7 +1830,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
             Accept: "text/event-stream",
           },
           body: JSON.stringify({
-            model: NVIDIA_MODEL,
+            model: chosenNvModel,
             messages: finalMessages,
             temperature: 0.7,
             max_tokens: Math.min(targetTokens, 4096),
@@ -2116,10 +2132,10 @@ CRITICAL IDENTITY INSTRUCTIONS:
   let completionContent = "";
   let lastErr = null;
 
-  // ── PRIORITY 1: NVIDIA NIM (2.8T MoE Kimi-K3 Flagship) ──
   if (NVIDIA_KEY) {
+    const chosenNvModel = resolveNvidiaModel(requestedModel, catalogModel.capability, false);
     try {
-      console.log(`[OpenAI Gateway Sync] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${NVIDIA_MODEL}`);
+      console.log(`[OpenAI Gateway Sync] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${chosenNvModel}`);
       const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -2127,7 +2143,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: NVIDIA_MODEL,
+          model: chosenNvModel,
           messages: finalMessages,
           temperature: 0.7,
           max_tokens: Math.min(targetTokens, 4096),
@@ -2356,7 +2372,9 @@ CRITICAL IDENTITY RULES:
           }
         }
 
-        console.log(`[Messages API] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${NVIDIA_MODEL} (stream: ${stream})`);
+        const hasImages = messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "image"));
+        const chosenNvModel = resolveNvidiaModel(requestedModel, catalogModel.capability, hasImages);
+        console.log(`[Messages API] Powering "${catalogModel.displayName}" via NVIDIA NIM: ${chosenNvModel} (stream: ${stream})`);
 
         const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
@@ -2366,7 +2384,7 @@ CRITICAL IDENTITY RULES:
             Accept: stream ? "text/event-stream" : "application/json",
           },
           body: JSON.stringify({
-            model: NVIDIA_MODEL,
+            model: chosenNvModel,
             messages: nvMessages,
             max_tokens: Math.min(max_tokens || 4096, 4096),
             temperature: 0.7,
