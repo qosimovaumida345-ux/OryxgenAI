@@ -47,10 +47,10 @@ graph TD
     E --> Stream
 ```
 
-### Underlying Flagship Engine: `moonshotai/kimi-k3`
+### Underlying Flagship Engine: `meta/llama-3.2-11b-vision-instruct` (NVIDIA NIM)
 * **Provider**: NVIDIA NIM API (`https://integrate.api.nvidia.com/v1/chat/completions`)
-* **Scale**: 2.8 Trillion Parameter Mixture-of-Experts (MoE)
-* **Role**: Powers ALL display models in the catalog while strictly maintaining the assigned persona.
+* **Role**: Powers ALL display models in the catalog via NVIDIA API key while strictly maintaining the assigned persona.
+* **Status**: ✅ Live & Verified (HTTP 200)
 
 ---
 
