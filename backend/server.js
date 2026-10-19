@@ -45,7 +45,7 @@ const PORT = Number(process.env.PORT) || 3001;
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
 const NVIDIA_KEY = process.env.NVIDIA_API_KEY || "";
-const NVIDIA_MODEL = "moonshotai/kimi-k3";
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "meta/llama-3.2-11b-vision-instruct";
 
 // ── SANITIZE KIMI-K3 / MODEL OUTPUT ──
 // Strips leaked special tokens (<|close|>, <|im_end|>, etc.) and detects degenerate repetitive garbage
@@ -389,7 +389,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
     // Max tokens set to 16,384 (NVIDIA NIM official ceiling) to provide generous room for reasoning + answer.
     if (NVIDIA_KEY) {
       try {
-        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL} (2.8T) with max_tokens=${effectiveMaxTokens}`);
+        console.log(`[Chat API] Powering "${meta.displayName}" using NVIDIA NIM: ${NVIDIA_MODEL}`);
         const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -401,8 +401,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
             model: NVIDIA_MODEL,
             messages: safeMessages,
             stream: true,
-            temperature: 1.0,
-            max_tokens: effectiveMaxTokens,
+            temperature: 0.7,
+            max_tokens: Math.min(effectiveMaxTokens, 4096),
           }),
         });
 
@@ -1816,8 +1816,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
           body: JSON.stringify({
             model: NVIDIA_MODEL,
             messages: finalMessages,
-            temperature: 1.0,
-            max_tokens: targetTokens,
+            temperature: 0.7,
+            max_tokens: Math.min(targetTokens, 4096),
             stream: true,
           }),
         });
@@ -2129,8 +2129,8 @@ CRITICAL IDENTITY INSTRUCTIONS:
         body: JSON.stringify({
           model: NVIDIA_MODEL,
           messages: finalMessages,
-          temperature: 1.0,
-          max_tokens: targetTokens,
+          temperature: 0.7,
+          max_tokens: Math.min(targetTokens, 4096),
         }),
       });
 
@@ -2368,8 +2368,8 @@ CRITICAL IDENTITY RULES:
           body: JSON.stringify({
             model: NVIDIA_MODEL,
             messages: nvMessages,
-            max_tokens,
-            temperature: 1.0,
+            max_tokens: Math.min(max_tokens || 4096, 4096),
+            temperature: 0.7,
             stream: Boolean(stream),
           }),
         });
