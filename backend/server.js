@@ -250,8 +250,40 @@ app.get("/health", (_req, res) => {
     hasOpenRouterKey: Boolean(OR_KEY),
     hasNvidiaKey: Boolean(NVIDIA_KEY),
     hasGroqKey: Boolean(GROQ_KEY),
+    nvidiaModel: NVIDIA_MODEL,
     time: new Date().toISOString(),
   });
+});
+
+// Diagnostic endpoint to test NVIDIA NIM directly
+app.get("/api/test-nvidia", async (_req, res) => {
+  try {
+    if (!NVIDIA_KEY) {
+      return res.status(500).json({ error: "NVIDIA_KEY mavjud emas" });
+    }
+    const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${NVIDIA_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: NVIDIA_MODEL,
+        messages: [{ role: "user", content: "Hi" }],
+        max_tokens: 16,
+        temperature: 1.0,
+      }),
+    });
+    const status = nvRes.status;
+    const body = await nvRes.text();
+    res.json({
+      status,
+      ok: nvRes.ok,
+      body: (() => { try { return JSON.parse(body); } catch { return body; } })(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Models list endpoint
