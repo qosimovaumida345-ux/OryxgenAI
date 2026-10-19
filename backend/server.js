@@ -4,6 +4,10 @@ import dotenv from "dotenv";
 import JSZip from "jszip";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { findModel, PUBLIC_IMAGE_MODELS, PUBLIC_MODELS, CATALOG } from "./catalog.js";
 import { pollinationsModel, refreshFreeModels, resolveUpstream, resolveBestCodeModel, getFreePool, getModelMaxTokens } from "./mapper.js";
 import {
@@ -322,8 +326,11 @@ app.get(["/download/oryxgen-extension.zip", "/api/download/extension"], async (r
   try {
     const filename = "oryxgen-extension.zip";
     const possiblePaths = [
+      path.join(__dirname, "..", "frontend", "public", "download", filename),
+      path.join(__dirname, "..", "frontend", "dist", "download", filename),
+      path.join(__dirname, "download", filename),
       path.join(process.cwd(), "frontend", "public", "download", filename),
-      path.join(process.cwd(), "frontend", "dist", "download", filename),
+      path.join(process.cwd(), "..", "frontend", "public", "download", filename),
       path.join(process.cwd(), "download", filename),
     ];
     for (const p of possiblePaths) {
@@ -332,13 +339,27 @@ app.get(["/download/oryxgen-extension.zip", "/api/download/extension"], async (r
       }
     }
 
-    // Dynamic fallback generation using JSZip
-    const extDir = path.join(process.cwd(), "extension");
-    if (fs.existsSync(extDir)) {
+    // Dynamic fallback generation using JSZip from extension directory
+    const possibleExtDirs = [
+      path.join(__dirname, "..", "extension"),
+      path.join(__dirname, "extension"),
+      path.join(process.cwd(), "extension"),
+      path.join(process.cwd(), "..", "extension"),
+    ];
+
+    let foundExtDir = null;
+    for (const dir of possibleExtDirs) {
+      if (fs.existsSync(dir) && fs.existsSync(path.join(dir, "manifest.json"))) {
+        foundExtDir = dir;
+        break;
+      }
+    }
+
+    if (foundExtDir) {
       const zip = new JSZip();
-      const files = fs.readdirSync(extDir);
+      const files = fs.readdirSync(foundExtDir);
       for (const f of files) {
-        const full = path.join(extDir, f);
+        const full = path.join(foundExtDir, f);
         if (fs.statSync(full).isFile()) {
           zip.file(f, fs.readFileSync(full));
         }

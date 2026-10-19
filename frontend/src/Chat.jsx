@@ -2504,6 +2504,7 @@ MANDATORY POWERSHELL RULES:
         isOpen={isDownloadModalOpen}
         onClose={() => setIsDownloadModalOpen(false)}
         initialTab={downloadModalTab}
+        onOpenMcpModal={() => setIsMcpModalOpen(true)}
       />
 
       {/* Authentication Modal - Guard */}

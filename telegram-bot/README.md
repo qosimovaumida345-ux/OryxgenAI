@@ -16,7 +16,6 @@ Oryxgen AI platformasidagi barcha modellar bilan ishlaydigan rasmiy Telegram bot
 ## 🚀 Ishga tushirish (Run)
 
 ```bash
-# Telegram botni ishga tushirish:
-node telegram-bot/bot.js
+# @BotFather dan olingan token bilan ishga tushirish:
+TELEGRAM_BOT_TOKEN="SIZNING_BOT_TOKENINGIZ" node telegram-bot/bot.js
 ```
-Token allaqachon sozlangan yoki `.env` orqali `TELEGRAM_BOT_TOKEN` sifatida o'rnatilishi mumkin.

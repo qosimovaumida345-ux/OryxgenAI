@@ -15,5 +15,6 @@ desktop/app-build/
 desktop/payload.zip
 *.exe
 *.zip
+!frontend/public/download/oryxgen-extension.zip
 frontend/public/download/*.exe
 frontend/dist/

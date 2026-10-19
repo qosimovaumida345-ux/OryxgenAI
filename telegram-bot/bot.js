@@ -7,7 +7,12 @@
 
 const https = require("https");
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "8866847165:AAEV9Oep_VnZAjS8VqqW554LPFvgBZqxrGQ";
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+  console.error("[Oryxgen Telegram Bot]: TELEGRAM_BOT_TOKEN muhit o'zgaruvchisi topilmadi.");
+  console.error("Ishga tushirish uchun: TELEGRAM_BOT_TOKEN=\"SIZNING_BOT_TOKENINGIZ\" node bot.js");
+  process.exit(1);
+}
 const API_BASE = process.env.ORYXGEN_API_URL || "https://oryxgen-api.onrender.com";
 
 // In-memory conversation state per chat: { [chatId]: { model: string, history: Array<{role, content}> } }
