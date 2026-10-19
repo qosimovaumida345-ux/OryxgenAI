@@ -274,40 +274,6 @@ function clientError(res, status, message) {
   res.status(status).json({ error: message });
 }
 
-// Fallback streaming generator when no OpenRouter key is configured
-async function streamSimulatedResponse(res, meta, userMsg, systemPrompt = "") {
-  if (!res.headersSent) {
-    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders?.();
-  }
-
-  // Only emit thinking for designated reasoning/thinking models
-  const isThinking = meta.tags?.includes("thinking") && meta.capability === "reason";
-
-  if (isThinking) {
-    res.write(`data: ${JSON.stringify({ thinking: `Tahlil qilinmoqda: "${userMsg.slice(0, 45)}..."` })}\n\n`);
-    await new Promise((r) => setTimeout(r, 150));
-    if (systemPrompt) {
-      res.write(`data: ${JSON.stringify({ thinking: `\n- Tizim ko'rsatmasi yuklandi va qoidalar tekshirildi` })}\n\n`);
-      await new Promise((r) => setTimeout(r, 150));
-    }
-  }
-
-  const responseText = `Assalomu alaykum! Men **${meta.displayName}** (${meta.company}) modeliman.\n\nSiz yuborgan so'rov:\n> ${userMsg}\n\n${systemPrompt ? `*Custom System Prompt tatbiq etildi.* \n\n` : ""
-    }### Model Xususiyatlari:\n- **Model**: ${meta.displayName}\n- **Ishlab chiquvchi**: ${meta.company}\n- **Qobiliyati**: ${meta.capability.toUpperCase()}\n- **Holati**: Faol & Barqaror\n\nQanday qo'shimcha vazifalarni bajarishimiz kerak?`;
-
-  const words = responseText.split(" ");
-  for (let i = 0; i < words.length; i++) {
-    const chunk = (i === 0 ? "" : " ") + words[i];
-    res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
-    await new Promise((r) => setTimeout(r, 25));
-  }
-
-  res.write("data: [DONE]\n\n");
-  res.end();
-}
 
 // Chat completion streaming endpoint
 app.post("/api/chat", authMiddleware, async (req, res) => {
@@ -371,7 +337,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
     const effectiveTemperature = typeof req.body?.temperature === "number" ? req.body.temperature : 0.7;
 
     if (!OR_KEY && !GROQ_KEY && !NVIDIA_KEY) {
-      return streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
+      return clientError(res, 503, "AI xizmati uchun API kalit sozlanmagan. Iltimos server sozlamalarini tekshiring.");
     }
 
     if (!res.headersSent) {
@@ -401,7 +367,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
             model: NVIDIA_MODEL,
             messages: safeMessages,
             stream: true,
-            temperature: effectiveTemperature,
+            temperature: 1.0,
             max_tokens: effectiveMaxTokens,
           }),
         });
@@ -688,12 +654,18 @@ CRITICAL IDENTITY INSTRUCTIONS:
     }
 
     if (!streamSucceeded) {
-      await streamSimulatedResponse(res, meta, lastUserMsg, systemPrompt);
+      if (!res.headersSent) {
+        clientError(res, 502, "AI model bilan ulanishda xatolik yuz berdi. Iltimos qaytadan urinib ko'ring.");
+      } else {
+        res.write(`data: ${JSON.stringify({ content: "\n\n⚠️ *[AI model javob qaytarishda uzilish yuz berdi. Iltimos so'rovni qaytadan yuboring]*" })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }
     }
   } catch (fatalErr) {
     console.error("[Chat API Fatal Error]:", fatalErr);
     if (!res.headersSent) {
-      clientError(res, 500, "Ichki server xatoligi");
+      clientError(res, 500, "Ichki server xatoligi: " + fatalErr.message);
     } else {
       try {
         res.write(`data: ${JSON.stringify({ content: "\n\n*[Serverda vaqtinchalik xatolik yuz berdi. Iltimos qaytadan yuboring]*" })}\n\n`);
@@ -1810,7 +1782,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
           body: JSON.stringify({
             model: NVIDIA_MODEL,
             messages: finalMessages,
-            temperature,
+            temperature: 1.0,
             max_tokens: targetTokens,
             stream: true,
           }),
@@ -2123,7 +2095,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
         body: JSON.stringify({
           model: NVIDIA_MODEL,
           messages: finalMessages,
-          temperature,
+          temperature: 1.0,
           max_tokens: targetTokens,
         }),
       });
@@ -2363,7 +2335,7 @@ CRITICAL IDENTITY RULES:
             model: NVIDIA_MODEL,
             messages: nvMessages,
             max_tokens,
-            temperature,
+            temperature: 1.0,
             stream: Boolean(stream),
           }),
         });
