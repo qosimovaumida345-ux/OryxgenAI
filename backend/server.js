@@ -261,7 +261,7 @@ app.get("/api/test-nvidia", async (req, res) => {
     if (!NVIDIA_KEY) {
       return res.status(500).json({ error: "NVIDIA_KEY mavjud emas" });
     }
-    const testModel = req.query.model || "moonshotai/kimi-k2.6";
+    const testModel = req.query.model || NVIDIA_MODEL;
     const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
       method: "POST",
       headers: {
