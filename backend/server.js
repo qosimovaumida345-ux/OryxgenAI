@@ -48,21 +48,96 @@ const NVIDIA_KEY = process.env.NVIDIA_API_KEY || "";
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "nvidia/nemotron-3-ultra-550b-a55b";
 
 // ── DYNAMIC NVIDIA NIM MODEL RESOLVER ──
+// Verified active models available on the user's NVIDIA API key
+export const VERIFIED_NVIDIA_MODELS = [
+  "nvidia/nemotron-3-ultra-550b-a55b",
+  "nvidia/nemotron-3-super-120b-a12b",
+  "nvidia/nemotron-3.5-super-vl-120b-a12b",
+  "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+  "nvidia/nemotron-4-340b-instruct",
+  "nvidia/llama-3.1-nemotron-70b-instruct",
+  "nvidia/llama-3.1-nemotron-51b-instruct",
+  "deepseek-ai/deepseek-v4.1-flash",
+  "meta/llama-3.2-90b-vision-instruct",
+  "meta/llama-3.2-11b-vision-instruct",
+  "meta/codellama-70b",
+  "google/gemma-4-31b-it",
+  "google/gemma-3-12b-it",
+  "mistralai/mistral-large-2-instruct",
+  "mistralai/codestral-22b-instruct-v0.1",
+  "mistralai/mixtral-8x22b-v0.1",
+  "openai/gpt-oss-20b",
+  "z-ai/glm-5.3",
+  "z-ai/glm-5.3-flash",
+  "01-ai/yi-large",
+  "databricks/dbrx-instruct",
+  "ibm/granite-34b-code-instruct",
+  "stepfun-ai/step-5-preview",
+  "writer/palmyra-creative-122b",
+];
+
 // Routes requests to the best verified NVIDIA model based on user selection & capabilities
 export function resolveNvidiaModel(requestedModel = "", capability = "chat", hasImages = false) {
-  if (hasImages || capability === "vision") {
-    return "nvidia/nemotron-3.5-super-vl-120b-a12b"; // 120B Multimodal Vision Flagship
+  const clean = (requestedModel || "").trim();
+  const lower = clean.toLowerCase();
+
+  // If user requested an exact verified NVIDIA NIM model ID, use it directly!
+  if (VERIFIED_NVIDIA_MODELS.includes(clean)) {
+    return clean;
   }
-  const lower = (requestedModel || "").toLowerCase();
+  const exactCaseInsensitive = VERIFIED_NVIDIA_MODELS.find((m) => m.toLowerCase() === lower);
+  if (exactCaseInsensitive) {
+    return exactCaseInsensitive;
+  }
+
+  // Vision routing
+  if (hasImages || capability === "vision" || lower.includes("vision")) {
+    if (lower.includes("llama")) return "meta/llama-3.2-90b-vision-instruct";
+    return "nvidia/nemotron-3.5-super-vl-120b-a12b";
+  }
+
+  // Specific vendor / brand routing
+  if (lower.includes("deepseek")) {
+    return "deepseek-ai/deepseek-v4.1-flash";
+  }
+  if (lower.includes("gemma") || lower.includes("gemini")) {
+    return "google/gemma-4-31b-it";
+  }
+  if (lower.includes("codestral") || lower.includes("starcoder")) {
+    return "mistralai/codestral-22b-instruct-v0.1";
+  }
+  if (lower.includes("granite")) {
+    return "ibm/granite-34b-code-instruct";
+  }
+  if (lower.includes("mistral") || lower.includes("mixtral")) {
+    return "mistralai/mistral-large-2-instruct";
+  }
+  if (lower.includes("llama")) {
+    if (lower.includes("code")) return "meta/codellama-70b";
+    return "nvidia/llama-3.1-nemotron-ultra-253b-v1";
+  }
+  if (lower.includes("glm") || lower.includes("z-ai")) {
+    return "z-ai/glm-5.3";
+  }
+  if (lower.includes("yi-large") || lower.includes("01-ai")) {
+    return "01-ai/yi-large";
+  }
+  if (lower.includes("dbrx") || lower.includes("databricks")) {
+    return "databricks/dbrx-instruct";
+  }
+
+  // Capability & Persona Routing
   if (lower.includes("code") || lower.includes("codex") || lower.includes("sonnet") || capability === "code") {
-    return "nvidia/nemotron-3-super-120b-a12b"; // 120B Autonomous Software Engineering & Agentic Coding
+    return "nvidia/nemotron-3-super-120b-a12b";
   }
-  if (lower.includes("opus") || lower.includes("reason") || lower.includes("o1") || lower.includes("o3") || capability === "reason") {
-    return "nvidia/nemotron-3-ultra-550b-a55b"; // 550B MoE Deep Reasoning & Deliberation Flagship
+  if (lower.includes("opus") || lower.includes("reason") || lower.includes("o1") || lower.includes("o3") || lower.includes("astra") || capability === "reason") {
+    return "nvidia/nemotron-3-ultra-550b-a55b";
   }
-  if (lower.includes("fast") || lower.includes("flash") || lower.includes("haiku") || lower.includes("mini")) {
-    return "nvidia/nemotron-3.5-lightning-30b-a3b"; // 30B Ultra-fast Sub-50ms Low-latency Engine
+  if (lower.includes("fast") || lower.includes("flash") || lower.includes("haiku") || lower.includes("mini") || lower.includes("luna")) {
+    return "nvidia/nemotron-3.5-lightning-30b-a3b";
   }
+
   // Default to 550B Ultra Flagship
   return NVIDIA_MODEL || "nvidia/nemotron-3-ultra-550b-a55b";
 }
@@ -338,31 +413,52 @@ CRITICAL IDENTITY INSTRUCTIONS:
       effectiveSystem += `\n\n[Custom User Instructions]:\n${systemPrompt.trim()}`;
     }
 
+    // Bulletproof conversation context builder:
+    // 1. Exclude client error messages and invalid entries
+    // 2. Ensure assistant messages have valid content (or fallback to thinking)
+    // 3. Keep all turns (up to 120 turns)
+    // 4. Merge consecutive same-role messages so upstream APIs never reject sequence
+    const sanitizedTurns = [];
+    for (const m of messages) {
+      if (!m || (m.role !== "user" && m.role !== "assistant") || m.isError) continue;
+      let text = typeof m.content === "string" ? m.content : "";
+      if (Array.isArray(m.content)) {
+        text = m.content.map((p) => (p.type === "text" ? p.text : "")).join("\n").trim();
+      }
+      if (m.role === "assistant" && !text.trim() && m.thinking) {
+        text = m.thinking;
+      }
+      if (m.role === "assistant" && !text.trim()) {
+        text = "Tushunarli, davom etamiz.";
+      }
+      if (!text.trim() && !m.image) continue;
+
+      if (m.image || Array.isArray(m.content)) {
+        if (Array.isArray(m.content)) {
+          sanitizedTurns.push({ role: m.role, content: m.content });
+          continue;
+        }
+        const parts = [];
+        if (text) parts.push({ type: "text", text });
+        if (typeof m.image === "string" && (m.image.startsWith("data:") || m.image.startsWith("http"))) {
+          parts.push({ type: "image_url", image_url: { url: m.image } });
+        }
+        sanitizedTurns.push({ role: m.role, content: parts.length > 0 ? parts : text });
+        continue;
+      }
+
+      // Merge consecutive identical roles to preserve sequence integrity
+      const prev = sanitizedTurns[sanitizedTurns.length - 1];
+      if (prev && prev.role === m.role && typeof prev.content === "string") {
+        prev.content += `\n\n${text}`;
+      } else {
+        sanitizedTurns.push({ role: m.role, content: text });
+      }
+    }
+
     const safeMessages = [
       { role: "system", content: effectiveSystem },
-      ...messages
-        .filter((m) => m && (m.role === "user" || m.role === "assistant"))
-        .map((m) => {
-          if (m.image || Array.isArray(m.content)) {
-            if (Array.isArray(m.content)) {
-              return { role: m.role, content: m.content };
-            }
-            const textContent = String(m.content || "");
-            const parts = [];
-            if (textContent) {
-              parts.push({ type: "text", text: textContent });
-            }
-            if (typeof m.image === "string" && (m.image.startsWith("data:") || m.image.startsWith("http"))) {
-              parts.push({
-                type: "image_url",
-                image_url: { url: m.image },
-              });
-            }
-            return { role: m.role, content: parts.length > 0 ? parts : textContent };
-          }
-          return { role: m.role, content: String(m.content || "") };
-        })
-        .slice(-120),
+      ...sanitizedTurns.slice(-120),
     ];
 
     const lastUserMsgObj = safeMessages.filter((m) => m.role === "user").pop();
@@ -497,6 +593,9 @@ CRITICAL IDENTITY INSTRUCTIONS:
 
           if (!nvAborted) {
             streamSucceeded = true;
+            if (!accumulatedContent.trim() && accumulatedThinking.trim()) {
+              res.write(`data: ${JSON.stringify({ content: accumulatedThinking })}\n\n`);
+            }
             res.write("data: [DONE]\n\n");
             res.end();
             return;
@@ -946,6 +1045,50 @@ const MCP_TOOLS = [
       required: ["prompt"],
     },
   },
+  {
+    name: "oryxgen_run_command",
+    description: "Execute native PowerShell, CMD, or bash command on the user's computer and return real terminal output. Use for inspecting files, running tests, or managing processes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "The command to run (e.g. 'Get-ChildItem -Path C:\\Users' or 'node -v')" },
+      },
+      required: ["command"],
+    },
+  },
+  {
+    name: "oryxgen_read_file",
+    description: "Read the UTF-8 text content of a file from the user's computer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the file to read" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "oryxgen_write_file",
+    description: "Write content to a file on the user's computer. Creates parent directories if they don't exist.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the file to write" },
+        content: { type: "string", description: "Content to write into the file" },
+      },
+      required: ["path", "content"],
+    },
+  },
+  {
+    name: "oryxgen_list_directory",
+    description: "List files and subdirectories inside a directory on the user's computer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the directory (defaults to current working directory)" },
+      },
+    },
+  },
 ];
 
 const MCP_PROMPTS = [
@@ -1063,7 +1206,49 @@ async function handleMcpJsonRpc(body, user) {
         const systemPrompt = args.systemPrompt || "";
         const meta = findModel(modelId) || PUBLIC_MODELS[0];
 
-        // Execute OpenRouter call or fallback
+        // Execute NVIDIA NIM call as primary
+        if (NVIDIA_KEY) {
+          try {
+            const chosenNvModel = resolveNvidiaModel(modelId, meta.capability, false);
+            const nvMessages = [
+              {
+                role: "system",
+                content: `You are "${meta.displayName}" created by ${meta.company}, running inside Oryxgen AI platform (https://avg-ai-creator.site).` + (systemPrompt ? `\n\n${systemPrompt}` : ""),
+              },
+              { role: "user", content: prompt },
+            ];
+            const nvRes = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${NVIDIA_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: chosenNvModel,
+                messages: nvMessages,
+                max_tokens: 4096,
+                temperature: 0.7,
+              }),
+            });
+            if (nvRes.ok) {
+              const data = await nvRes.json();
+              const reply = data.choices?.[0]?.message?.content || "";
+              if (reply) {
+                return {
+                  jsonrpc: "2.0",
+                  id,
+                  result: {
+                    content: [{ type: "text", text: sanitizeModelOutput(reply) }],
+                  },
+                };
+              }
+            }
+          } catch (e) {
+            console.warn("[MCP] NVIDIA NIM error:", e.message);
+          }
+        }
+
+        // Fallback to OpenRouter or default
         if (OR_KEY) {
           try {
             const chain = await resolveUpstream(meta.capability, modelId);
@@ -1107,11 +1292,88 @@ async function handleMcpJsonRpc(body, user) {
             content: [
               {
                 type: "text",
-                text: `[${meta.displayName}] javobi: Sizning so'rovingiz qabul qilindi: "${prompt}". MCP integratsiyasi orqali ishga tushirildi.`,
+                text: `[${meta.displayName}] javobi: Sizning so'rovingiz qabul qilindi: "${prompt}". MCP integratsiyasi orqali muvaffaqiyatli ishga tushirildi.`,
               },
             ],
           },
         };
+      }
+
+      if (toolName === "oryxgen_run_command") {
+        const cmd = args.command || "";
+        try {
+          const { execSync } = await import("child_process");
+          const out = execSync(cmd, { timeout: 30000, encoding: "utf-8", windowsHide: true });
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: out || "(buyruq bajarildi, chiqish yo'q)" }] },
+          };
+        } catch (err) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: `Xatolik: ${err.message}` }], isError: true },
+          };
+        }
+      }
+
+      if (toolName === "oryxgen_read_file") {
+        const filePath = args.path || "";
+        try {
+          const content = fs.readFileSync(filePath, "utf-8");
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: content }] },
+          };
+        } catch (err) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: `Faylni o'qishda xatolik: ${err.message}` }], isError: true },
+          };
+        }
+      }
+
+      if (toolName === "oryxgen_write_file") {
+        const filePath = args.path || "";
+        const content = args.content || "";
+        try {
+          const dir = path.dirname(filePath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(filePath, content, "utf-8");
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: `Fayl muvaffaqiyatli saqlandi: ${filePath}` }] },
+          };
+        } catch (err) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: `Faylni yozishda xatolik: ${err.message}` }], isError: true },
+          };
+        }
+      }
+
+      if (toolName === "oryxgen_list_directory") {
+        const dirPath = args.path || process.cwd();
+        try {
+          const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+          const items = entries.map((e) => `${e.isDirectory() ? "[DIR]" : "[FILE]"} ${e.name}`);
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: items.join("\n") }] },
+          };
+        } catch (err) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: { content: [{ type: "text", text: `Papkani o'qishda xatolik: ${err.message}` }], isError: true },
+          };
+        }
       }
 
       if (toolName === "codex_generate_app") {

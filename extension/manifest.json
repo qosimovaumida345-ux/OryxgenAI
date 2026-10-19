@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Oryxgen AI — Browser Automator & Intelligence Extension",
+  "version": "1.0.0",
+  "description": "Control your browser with 80+ AI models, automate actions, summarize pages, inspect errors, and write code seamlessly.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Oryxgen AI Browser Assistant"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

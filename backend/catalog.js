@@ -132,13 +132,32 @@ export const CATALOG = [
   row("mistral-nemo", "Mistral", "Mistral Nemo", "12B model co-developed with NVIDIA. 128k context.", "mistral", "chat"),
 
   // ═══════════════════════════════════════════════════════════════
-  // NVIDIA NEMOTRON — Verified September 29, 2026
+  // NVIDIA NIM FRONTIER — Verified Active on NVIDIA API Key
   // ═══════════════════════════════════════════════════════════════
-  row("nemotron-3-ultra", "NVIDIA", "Nemotron 3 Ultra", "550B MoE. Hybrid Mamba-Transformer. 1M context. Extreme reasoning depth.", "nvidia", "reason"),
-  row("nemotron-3-super", "NVIDIA", "Nemotron 3 Super", "120B optimized for collaborative agent tasks.", "nvidia", "reason"),
-  row("nemotron-3.5-lightning", "NVIDIA", "Nemotron 3.5 Lightning", "30B fast MoE. Sub-50ms latency. August 2026.", "nvidia", "chat", false, ["fast"]),
-  row("nemotron-3-nano", "NVIDIA", "Nemotron 3 Nano", "Compact agent model for embedded orchestration.", "nvidia", "chat"),
-  row("nemotron-nano-omni", "NVIDIA", "Nemotron Nano Omni", "Multimodal omni model with real-time reasoning.", "nvidia", "vision"),
+  row("nemotron-3-ultra", "NVIDIA", "Nemotron 3 Ultra 550B", "550B MoE Flagship. Hybrid Mamba-Transformer architecture with deep reasoning depth.", "nvidia", "reason", false, ["nvidia", "flagship", "thinking"]),
+  row("nvidia/nemotron-3-ultra-550b-a55b", "NVIDIA", "Nemotron 3 Ultra 550B (NIM)", "550B MoE Flagship. Upstream NVIDIA NIM execution endpoint.", "nvidia", "reason", false, ["nvidia", "flagship", "thinking", "nim"]),
+  row("nemotron-3-super", "NVIDIA", "Nemotron 3 Super 120B", "120B MoE Flagship for autonomous software engineering, agentic coding & tools.", "nvidia", "code", false, ["nvidia", "code", "flagship"]),
+  row("nvidia/nemotron-3-super-120b-a12b", "NVIDIA", "Nemotron 3 Super 120B (NIM)", "120B MoE Autonomous Coding & Tool execution endpoint.", "nvidia", "code", false, ["nvidia", "code", "nim"]),
+  row("nemotron-3.5-super-vl", "NVIDIA", "Nemotron 3.5 Super VL 120B", "120B Multimodal Vision Flagship for image analysis, OCR, and diagram understanding.", "nvidia", "vision", false, ["nvidia", "vision", "flagship"]),
+  row("nvidia/nemotron-3.5-super-vl-120b-a12b", "NVIDIA", "Nemotron 3.5 Super VL 120B (NIM)", "120B Multimodal Vision upstream endpoint.", "nvidia", "vision", false, ["nvidia", "vision", "nim"]),
+  row("nemotron-3.5-lightning", "NVIDIA", "Nemotron 3.5 Lightning 30B", "30B fast MoE. Sub-50ms ultra-low latency response engine.", "nvidia", "chat", false, ["nvidia", "fast", "nim"]),
+  row("nvidia/nemotron-3.5-lightning-30b-a3b", "NVIDIA", "Nemotron 3.5 Lightning 30B (NIM)", "30B Ultra-fast Sub-50ms upstream endpoint.", "nvidia", "chat", false, ["nvidia", "fast", "nim"]),
+  row("nvidia/llama-3.1-nemotron-ultra-253b-v1", "NVIDIA", "Nemotron Ultra 253B", "253B Parameter frontier reasoning and instruction model.", "nvidia", "reason", false, ["nvidia", "reason", "nim"]),
+  row("nvidia/nemotron-4-340b-instruct", "NVIDIA", "Nemotron 4 340B Instruct", "340B Enterprise flagship LLM for high-complexity domain tasks.", "nvidia", "reason", false, ["nvidia", "enterprise", "nim"]),
+  row("nvidia/llama-3.1-nemotron-70b-instruct", "NVIDIA", "Nemotron 70B Instruct", "70B general instruction and reasoning model.", "nvidia", "chat", false, ["nvidia", "chat", "nim"]),
+  row("deepseek-ai/deepseek-v4.1-flash", "DeepSeek", "DeepSeek V4.1 Flash (NIM)", "Current DeepSeek flagship running on NVIDIA NIM with 1M context.", "deepseek", "reason", false, ["deepseek", "flagship", "nim"]),
+  row("meta/llama-3.2-90b-vision-instruct", "Meta", "Llama 3.2 90B Vision (NIM)", "Meta's flagship multimodal 90B model with high-resolution vision.", "meta", "vision", false, ["meta", "vision", "nim"]),
+  row("meta/llama-3.2-11b-vision-instruct", "Meta", "Llama 3.2 11B Vision (NIM)", "Fast multimodal text and image reasoning model.", "meta", "vision", false, ["meta", "vision", "nim"]),
+  row("meta/codellama-70b", "Meta", "CodeLlama 70B (NIM)", "70B specialized code synthesis and refactoring model.", "meta", "code", false, ["meta", "code", "nim"]),
+  row("google/gemma-4-31b-it", "Google", "Gemma 4 31B (NIM)", "Google DeepMind near-frontier open model running on NVIDIA NIM.", "google", "reason", false, ["google", "nim"]),
+  row("google/gemma-3-12b-it", "Google", "Gemma 3 12B (NIM)", "Third-gen Gemma instruction-tuned model running on NVIDIA NIM.", "google", "chat", false, ["google", "nim"]),
+  row("mistralai/mistral-large-2-instruct", "Mistral", "Mistral Large 2 (NIM)", "123B frontier model with 128k context running on NVIDIA NIM.", "mistral", "reason", false, ["mistral", "flagship", "nim"]),
+  row("mistralai/codestral-22b-instruct-v0.1", "Mistral", "Codestral 22B (NIM)", "22B expert code completion and software engineering model.", "mistral", "code", false, ["mistral", "code", "nim"]),
+  row("mistralai/mixtral-8x22b-v0.1", "Mistral", "Mixtral 8x22B (NIM)", "176B sparse Mixture-of-Experts with 65k context.", "mistral", "reason", false, ["mistral", "moe", "nim"]),
+  row("z-ai/glm-5.3", "Zhipu AI", "GLM 5.3 (NIM)", "Bilingual frontier reasoning model running on NVIDIA NIM.", "other", "reason", false, ["glm", "nim"]),
+  row("01-ai/yi-large", "01.AI", "Yi-Large (NIM)", "High-performance frontier model by 01.AI running on NVIDIA NIM.", "other", "reason", false, ["yi", "nim"]),
+  row("databricks/dbrx-instruct", "Databricks", "Databricks DBRX 132B (NIM)", "132B open Mixture-of-Experts instruction-tuned model.", "other", "reason", false, ["databricks", "nim"]),
+  row("ibm/granite-34b-code-instruct", "IBM", "IBM Granite 34B Code (NIM)", "Enterprise code synthesis and agentic reasoning model.", "ibm", "code", false, ["ibm", "code", "nim"]),
 
   // ═══════════════════════════════════════════════════════════════
   // COHERE — Verified September 29, 2026
@@ -205,6 +224,10 @@ export function findModel(id) {
   const direct = CATALOG.find((m) => m.id.toLowerCase() === cleanId) || IMAGE_CATALOG.find((m) => m.id.toLowerCase() === cleanId);
   if (direct) return direct;
 
+  // Direct upstream prefix matching (e.g. nvidia/..., deepseek-ai/..., google/..., meta/..., mistralai/...)
+  const upstreamMatch = CATALOG.find((m) => m.id.toLowerCase().endsWith(cleanId) || cleanId.endsWith(m.id.toLowerCase()));
+  if (upstreamMatch) return upstreamMatch;
+
   // Smart aliases for flagship Claude tiers requested by Claude Code / Anthropic SDK
   if (cleanId.includes("opus")) {
     return CATALOG.find((m) => m.id === "claude-opus-5.5") || CATALOG.find((m) => m.id.includes("opus"));
@@ -225,6 +248,20 @@ export function findModel(id) {
   if (cleanId.includes("sol")) {
     return CATALOG.find((m) => m.id === "gpt-6-sol");
   }
+  if (cleanId.includes("deepseek")) {
+    return CATALOG.find((m) => m.id === "deepseek-ai/deepseek-v4.1-flash") || CATALOG.find((m) => m.id.includes("deepseek"));
+  }
+  if (cleanId.includes("nemotron")) {
+    return CATALOG.find((m) => m.id === "nvidia/nemotron-3-ultra-550b-a55b") || CATALOG.find((m) => m.id.includes("nemotron"));
+  }
   // General fallback
-  return CATALOG.find((m) => cleanId.includes(m.id.toLowerCase()));
+  const fallback = CATALOG.find((m) => cleanId.includes(m.id.toLowerCase()));
+  if (fallback) return fallback;
+
+  // If requested directly as an upstream model name with a vendor prefix
+  if (cleanId.includes("/")) {
+    const parts = id.split("/");
+    return row(id, parts[0], id, "NVIDIA NIM Accelerated Model", parts[0].toLowerCase(), "chat", false, ["nim"]);
+  }
+  return null;
 }

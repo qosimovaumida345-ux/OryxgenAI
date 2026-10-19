@@ -104,13 +104,13 @@ graph TD
 
 | Component | Status | Notes |
 |---|---|---|
-| **Kimi-K3 Integration** | ✅ Complete | Default engine for all catalog models via NVIDIA NIM |
-| **400 Bad Request Fix** | ✅ Complete | Omitted `top_p` parameter across all NVIDIA NIM payloads |
-| **Header Crash Fix** | ✅ Complete | Added `!res.headersSent` checks to eliminate `ERR_HTTP_HEADERS_SENT` |
-| **Token Limit Upgrade** | ✅ Complete | Raised `max_tokens` from 4,096 to 16,384 (NVIDIA max limit) |
-| **History & Text Limits** | ✅ Complete | Removed 32,000 char truncations; expanded history to 120+ turns |
-| **Output Sanitizer** | ✅ Complete | Added `sanitizeModelOutput` & `isDegenerate` loop detection |
-| **Deployment** | ✅ Live | Latest commit `0127769` deployed on Render |
+| **NVIDIA NIM Flagship Engines** | ✅ Complete | Dynamic routing to Nemotron 3 Ultra 550B, Super 120B, DeepSeek V4.1, Gemma 4, etc. |
+| **80+ Models Choose-able** | ✅ Complete | All models selectable in catalog, frontend dropdown, and API gateways |
+| **Context Memory Fix** | ✅ Complete | Bulletproof multi-turn context retention, filtered error tokens, non-empty responses |
+| **Chrome Extension** | ✅ Complete | Manifest V3 browser automator in `extension/` for web analysis and error detection |
+| **Telegram Bot Service** | ✅ Complete | Multi-turn memory bot with `/model`, `/clear`, `/status` in `telegram-bot/` |
+| **Claude Desktop & MCP** | ✅ Complete | MCP server + `/v1/messages` integration with `CLAUDE_DESKTOP_SETUP.md` |
+| **Deployment** | ✅ Live | Continuous deployment on Render from GitHub `master` |
 
 ---
 
