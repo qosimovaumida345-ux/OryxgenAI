@@ -23,6 +23,7 @@ import { CompanyLogo } from "./Logos";
 import StructureViewer, { isDirectoryTreeCode } from "./StructureViewer";
 import ApiPlatformModal from "./ApiPlatformModal";
 import DesktopDeviceModal from "./DesktopDeviceModal";
+import AppsDownloadModal from "./AppsDownloadModal";
 import "./Chat.css";
 
 const DEFAULT_MODEL = "claude-4.6-opus";
@@ -699,6 +700,8 @@ export default function Chat() {
   const [mcpCopied, setMcpCopied] = useState(false);
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [downloadModalTab, setDownloadModalTab] = useState("extension");
   const [attachedImage, setAttachedImage] = useState(null);
   const [zoomedImage, setZoomedImage] = useState(null);
   const fileInputRef = useRef(null);
@@ -1705,6 +1708,40 @@ MANDATORY POWERSHELL RULES:
             </svg>
             Tasvir Studiyasi
           </Link>
+
+          <button
+            type="button"
+            className="sidebar-tool-btn"
+            onClick={() => {
+              setDownloadModalTab("extension");
+              setIsDownloadModalOpen(true);
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="4" />
+              <line x1="4.93" y1="4.93" x2="9.17" y2="9.17" />
+              <line x1="14.83" y1="14.83" x2="19.07" y2="19.07" />
+              <line x1="14.83" y1="9.17" x2="19.07" y2="4.93" />
+              <line x1="4.93" y1="19.07" x2="9.17" y2="14.83" />
+            </svg>
+            Chrome Extension (.zip)
+          </button>
+
+          <button
+            type="button"
+            className="sidebar-tool-btn"
+            onClick={() => {
+              setDownloadModalTab("telegram");
+              setIsDownloadModalOpen(true);
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+            Telegram Bot
+          </button>
         </div>
 
         <div className="sidebar-user-footer">
@@ -1855,12 +1892,30 @@ MANDATORY POWERSHELL RULES:
               <Link to="/image" className="nav-btn-action">
                 Tasvir
               </Link>
+              <button
+                type="button"
+                className="nav-btn-action"
+                onClick={() => {
+                  setDownloadModalTab("extension");
+                  setIsDownloadModalOpen(true);
+                }}
+                title="Chrome Extension yuklab olish va o'rnatish qo'llanmasi"
+              >
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="12" r="4" />
+                </svg>
+                <span>Extension</span>
+              </button>
               {typeof window !== "undefined" && !(window.oryxgenDesktop || window.electronAPI) && (
-                <a
-                  href="https://oryxgen-api.onrender.com/download/OryxgenSetup.exe"
-                  download="OryxgenSetup.exe"
+                <button
+                  type="button"
                   className="nav-btn-action"
-                  title="Oryxgen AI Desktop ilovasini kompyuteringizga o'rnating (.exe)"
+                  onClick={() => {
+                    setDownloadModalTab("desktop");
+                    setIsDownloadModalOpen(true);
+                  }}
+                  title="Oryxgen AI Desktop ilovasi (.exe) yuklab olish va o'rnatish"
                 >
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -1868,7 +1923,7 @@ MANDATORY POWERSHELL RULES:
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
                   <span>Desktop Ilova</span>
-                </a>
+                </button>
               )}
               {!currentUser && (
                 <button
@@ -2442,6 +2497,13 @@ MANDATORY POWERSHELL RULES:
       <DesktopDeviceModal
         isOpen={isDeviceModalOpen}
         onClose={() => setIsDeviceModalOpen(false)}
+      />
+
+      {/* Apps, Extension, Telegram & Claude MCP Download Center */}
+      <AppsDownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        initialTab={downloadModalTab}
       />
 
       {/* Authentication Modal - Guard */}

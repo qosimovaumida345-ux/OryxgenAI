@@ -317,6 +317,45 @@ app.get(["/download/OryxgenSetup.exe", "/api/download/desktop"], async (req, res
   }
 });
 
+// 📥 Chrome Extension Download Endpoint (Streams zipped extension directory)
+app.get(["/download/oryxgen-extension.zip", "/api/download/extension"], async (req, res) => {
+  try {
+    const filename = "oryxgen-extension.zip";
+    const possiblePaths = [
+      path.join(process.cwd(), "frontend", "public", "download", filename),
+      path.join(process.cwd(), "frontend", "dist", "download", filename),
+      path.join(process.cwd(), "download", filename),
+    ];
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        return res.download(p, filename);
+      }
+    }
+
+    // Dynamic fallback generation using JSZip
+    const extDir = path.join(process.cwd(), "extension");
+    if (fs.existsSync(extDir)) {
+      const zip = new JSZip();
+      const files = fs.readdirSync(extDir);
+      for (const f of files) {
+        const full = path.join(extDir, f);
+        if (fs.statSync(full).isFile()) {
+          zip.file(f, fs.readFileSync(full));
+        }
+      }
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(zipBuffer);
+    }
+
+    res.status(404).json({ error: "Extension fayllari serverda topilmadi." });
+  } catch (err) {
+    console.error("[Extension Download Error]:", err);
+    res.status(500).send("Extension yuklab olishda xatolik yuz berdi: " + err.message);
+  }
+});
+
 // Health check endpoint
 app.get("/health", (_req, res) => {
   res.json({
