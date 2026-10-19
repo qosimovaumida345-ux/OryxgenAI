@@ -47,8 +47,9 @@ graph TD
     E --> Stream
 ```
 
-### Underlying Flagship Engine: `meta/llama-3.2-11b-vision-instruct` (NVIDIA NIM)
+### Underlying Flagship Engine: `nvidia/nemotron-3-ultra-550b-a55b` (550B MoE Flagship)
 * **Provider**: NVIDIA NIM API (`https://integrate.api.nvidia.com/v1/chat/completions`)
+* **Scale**: 550 Billion Parameters Mixture-of-Experts (MoE)
 * **Role**: Powers ALL display models in the catalog via NVIDIA API key while strictly maintaining the assigned persona.
 * **Status**: ✅ Live & Verified (HTTP 200)
 
