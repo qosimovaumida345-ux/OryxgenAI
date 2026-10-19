@@ -2414,7 +2414,7 @@ CRITICAL IDENTITY INSTRUCTIONS:
 
       if (nvRes.ok) {
         const data = await nvRes.json();
-        completionContent = data.choices?.[0]?.message?.content || "";
+        completionContent = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || "";
       } else {
         const errText = await nvRes.text().catch(() => "");
         console.warn(`[OpenAI Gateway Sync] NVIDIA NIM failed (${nvRes.status}):`, errText);
@@ -2737,7 +2737,7 @@ CRITICAL IDENTITY RULES:
             return;
           } else {
             const data = await nvRes.json();
-            const outText = data.choices?.[0]?.message?.content || "";
+            const outText = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || "";
             res.json({
               id: `msg_${Date.now()}`,
               type: "message",
