@@ -45,7 +45,7 @@ const PORT = Number(process.env.PORT) || 3001;
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
 const NVIDIA_KEY = process.env.NVIDIA_API_KEY || "";
-const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "meta/llama-3.2-11b-vision-instruct";
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || "nvidia/nemotron-3-ultra-550b-a55b";
 
 // ── SANITIZE KIMI-K3 / MODEL OUTPUT ──
 // Strips leaked special tokens (<|close|>, <|im_end|>, etc.) and detects degenerate repetitive garbage
